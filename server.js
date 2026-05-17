@@ -171,7 +171,7 @@ app.post('/api/convert', async (req, res) => {
 
     res.json({ 
       success: true, 
-      url: `http://localhost:3001/files/${outputFileName}`,
+      url: `/files/${outputFileName}`,
       fileName: outputFileName
     });
   } catch (err) {
@@ -203,13 +203,13 @@ app.post('/api/separate-vocals', upload.single('audio'), async (req, res) => {
   if (isCacheComplete && matchesModel) {
     console.log(`Cache hit for ${folderName}! Skipping processing.`);
     return res.json({
-      vocalsUrl: `http://localhost:3001/files/${folderName}/vocals.wav`,
-      instrumentalUrl: `http://localhost:3001/files/${folderName}/instrumental.wav`,
-      bassUrl: `http://localhost:3001/files/${folderName}/bass.wav`,
-      drumsUrl: `http://localhost:3001/files/${folderName}/drums.wav`,
-      otherUrl: `http://localhost:3001/files/${folderName}/other.wav`,
-      guitarUrl: hasGuitar ? `http://localhost:3001/files/${folderName}/guitar.wav` : null,
-      pianoUrl: hasPiano ? `http://localhost:3001/files/${folderName}/piano.wav` : null
+      vocalsUrl: `/files/${folderName}/vocals.wav`,
+      instrumentalUrl: `/files/${folderName}/instrumental.wav`,
+      bassUrl: `/files/${folderName}/bass.wav`,
+      drumsUrl: `/files/${folderName}/drums.wav`,
+      otherUrl: `/files/${folderName}/other.wav`,
+      guitarUrl: hasGuitar ? `/files/${folderName}/guitar.wav` : null,
+      pianoUrl: hasPiano ? `/files/${folderName}/piano.wav` : null
     });
   }
 
