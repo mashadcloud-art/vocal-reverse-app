@@ -225,21 +225,25 @@ app.post('/api/separate-vocals', upload.single('audio'), async (req, res) => {
       });
     });
 
+    // Dynamic Python Virtual Environment path detection
+    const localVenvLinux = path.join(__dirname, 'venv', 'bin', 'python');
+    const localVenvWin = path.join(__dirname, 'venv', 'Scripts', 'python.exe');
+    const PYTHON_PATH = fs.existsSync(localVenvLinux) ? localVenvLinux : (fs.existsSync(localVenvWin) ? localVenvWin : 'python');
+
+    console.log(`Running separation engine with: ${PYTHON_PATH}`);
+
     // 2. Run Demucs
     if (modelType === 'pro') {
       console.log('Running Demucs PRO (6-Stem)... This will be slow.');
       await new Promise((resolve, reject) => {
-        // We use python -m demucs directly. 
-        // Run our robust wrapper script
         const pythonScript = path.join(__dirname, 'separate_stems.py');
-        const pythonCommand = `python "${pythonScript}" htdemucs_6s "${wavFilePath}" "${SEPARATED_DIR}"`;
+        const pythonCommand = `"${PYTHON_PATH}" "${pythonScript}" htdemucs_6s "${wavFilePath}" "${SEPARATED_DIR}"`;
         
         exec(pythonCommand, { 
           env: { ...process.env, TORCHAUDIO_BACKEND: 'soundfile' }
         }, (error) => {
           if (error) return reject(error);
           
-          // Demucs Pro creates a subfolder for the model name using the input filename (which has _work suffix)
           const proSourceDir = path.join(SEPARATED_DIR, 'htdemucs_6s', `${folderName}_work`);
           if (fs.existsSync(proSourceDir)) {
             if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
@@ -254,14 +258,13 @@ app.post('/api/separate-vocals', upload.single('audio'), async (req, res) => {
       console.log('Running Demucs FAST (4-Stem) via PyTorch...');
       await new Promise((resolve, reject) => {
         const pythonScript = path.join(__dirname, 'separate_stems.py');
-        const pythonCommand = `python "${pythonScript}" htdemucs "${wavFilePath}" "${SEPARATED_DIR}"`;
+        const pythonCommand = `"${PYTHON_PATH}" "${pythonScript}" htdemucs "${wavFilePath}" "${SEPARATED_DIR}"`;
         
         exec(pythonCommand, { 
           env: { ...process.env, TORCHAUDIO_BACKEND: 'soundfile' }
         }, (error) => {
           if (error) return reject(error);
           
-          // Demucs Fast creates a subfolder for the model name using the input filename (which has _work suffix)
           const fastSourceDir = path.join(SEPARATED_DIR, 'htdemucs', `${folderName}_work`);
           if (fs.existsSync(fastSourceDir)) {
             if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
