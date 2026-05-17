@@ -391,29 +391,54 @@ const App = () => {
     const audio = new Audio(activeTrack.url);
     directAudio.current = audio;
 
-    directWavesurfer.current = WaveSurfer.create({
-      container: playerContainerRef.current,
-      waveColor: 'rgba(200, 245, 100, 0.1)',
-      progressColor: '#c8f564',
-      barWidth: 2,
-      barGap: 3,
-      height: 80,
-      normalize: true,
-      media: audio
-    });
+    try {
+      directWavesurfer.current = WaveSurfer.create({
+        container: playerContainerRef.current,
+        waveColor: 'rgba(200, 245, 100, 0.1)',
+        progressColor: '#c8f564',
+        barWidth: 2,
+        barGap: 3,
+        height: 80,
+        normalize: true,
+        media: audio
+      });
 
-    directWavesurfer.current.on('play', () => setIsPlaying(true));
-    directWavesurfer.current.on('pause', () => setIsPlaying(false));
-    directWavesurfer.current.on('ready', () => setDuration(directWavesurfer.current.getDuration()));
-    directWavesurfer.current.on('timeupdate', () => setCurrentTime(directWavesurfer.current.getCurrentTime()));
+      directWavesurfer.current.on('play', () => setIsPlaying(true));
+      directWavesurfer.current.on('pause', () => setIsPlaying(false));
+      directWavesurfer.current.on('ready', () => {
+        setDuration(directWavesurfer.current.getDuration());
+      });
+      directWavesurfer.current.on('timeupdate', () => {
+        setCurrentTime(directWavesurfer.current.getCurrentTime());
+      });
 
-    directWavesurfer.current.play();
+      audio.play().then(() => {
+        setIsPlaying(true);
+      }).catch(e => {
+        console.log("Auto-play blocked or failed", e);
+        setIsPlaying(false);
+      });
+    } catch (createErr) {
+      console.error("Error creating wavesurfer in player:", createErr);
+    }
 
     return () => {
-      if (directWavesurfer.current) directWavesurfer.current.destroy();
-      if (directAudio.current) {
-        directAudio.current.pause();
-        directAudio.current.src = "";
+      try {
+        if (directWavesurfer.current) {
+          directWavesurfer.current.destroy();
+          directWavesurfer.current = null;
+        }
+      } catch (e) {
+        console.error("Error destroying wavesurfer:", e);
+      }
+      try {
+        if (directAudio.current) {
+          directAudio.current.pause();
+          directAudio.current.src = "";
+          directAudio.current = null;
+        }
+      } catch (e) {
+        console.error("Error cleaning up audio:", e);
       }
     };
   }, [view, activeTrack]);
@@ -932,7 +957,20 @@ const App = () => {
         <div className="flex items-center justify-center gap-6 md:gap-10 w-full mb-6">
           <button className="text-white/20 hover:text-white transition-all"><Shuffle size={18} /></button>
           <button className="text-white/40 hover:text-white transition-all"><SkipBack size={24} fill="currentColor" /></button>
-          <button onClick={() => directWavesurfer.current?.playPause()} className="w-16 h-16 rounded-full bg-[#c8f564] text-black flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all">
+          <button 
+            onClick={() => {
+              if (directAudio.current) {
+                if (isPlaying) {
+                  directAudio.current.pause();
+                  setIsPlaying(false);
+                } else {
+                  directAudio.current.play().catch(e => console.log("Play error", e));
+                  setIsPlaying(true);
+                }
+              }
+            }} 
+            className="w-16 h-16 rounded-full bg-[#c8f564] text-black flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all"
+          >
             {isPlaying ? <Pause size={22} fill="black" /> : <Play size={22} fill="black" className="ml-0.5" />}
           </button>
           <button className="text-white/40 hover:text-white transition-all"><SkipForward size={24} fill="currentColor" /></button>
@@ -1237,7 +1275,20 @@ const App = () => {
             <div className="w-full max-w-4xl space-y-8">
               <div className="glass-card p-6 md:p-12 relative overflow-hidden shadow-4xl">
                 <div className="flex flex-col md:flex-row items-center gap-8 mb-10 border-b border-white/5 pb-8">
-                  <button onClick={() => wavesurfer.current?.playPause()} className="w-16 h-16 rounded-full bg-[#c8f564] text-black flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all flex-shrink-0">
+                  <button 
+                    onClick={() => {
+                      if (musicAudio.current) {
+                        if (isPlaying) {
+                          musicAudio.current.pause();
+                          setIsPlaying(false);
+                        } else {
+                          musicAudio.current.play().catch(e => console.log("Play error", e));
+                          setIsPlaying(true);
+                        }
+                      }
+                    }} 
+                    className="w-16 h-16 rounded-full bg-[#c8f564] text-black flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all flex-shrink-0"
+                  >
                     {isPlaying ? <Pause size={24} fill="black" /> : <Play size={24} fill="black" className="ml-0.5" />}
                   </button>
                   <div className="text-center md:text-left min-w-0 w-full">
