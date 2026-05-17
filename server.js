@@ -54,11 +54,10 @@ const upload = multer({ storage: storage });
 const activeDownloads = {};
 
 app.post('/api/download-url', async (req, res) => {
-  const { url, format = 'wav', skipSeparation = false, bitrate = '320k' } = req.body;
+  const { url, format = 'wav', skipSeparation = false, bitrate = '320k', downloadId = Date.now().toString() } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
   const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
-  const downloadId = Date.now().toString();
   const uniqueId = Date.now();
 
   try {

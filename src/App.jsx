@@ -84,7 +84,7 @@ const App = () => {
   const abortControllerRef = useRef(null);
   const processingIntervalRef = useRef(null);
 
-  const cancelProcessing = () => {
+  const cancelProcessing = async () => {
     if (processingIntervalRef.current) {
       clearInterval(processingIntervalRef.current);
       processingIntervalRef.current = null;
@@ -94,6 +94,14 @@ const App = () => {
         abortControllerRef.current.abort();
       }
       abortControllerRef.current = null;
+    }
+    if (activeDownloadId) {
+      try {
+        await fetch(`${API_URL}/cancel/${activeDownloadId}`, { method: 'POST' });
+      } catch (e) {
+        console.error("Failed to cancel download on server", e);
+      }
+      setActiveDownloadId(null);
     }
     setIsProcessing(false);
     setUploadProgress(0);
@@ -109,6 +117,7 @@ const App = () => {
   ]);
   const [activeTrack, setActiveTrack] = useState(library[0]);
   const [selectedLibraryTrack, setSelectedLibraryTrack] = useState(null);
+  const [activeDownloadId, setActiveDownloadId] = useState(null);
 
   // --- Separator (Splitter) States ---
   const [file, setFile] = useState(null);
@@ -532,6 +541,9 @@ const App = () => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    const dId = Date.now().toString();
+    setActiveDownloadId(dId);
+
     try {
       const response = await fetch(API_URL + '/download-url', {
         method: 'POST',
@@ -540,7 +552,8 @@ const App = () => {
           url: cleanedUrl,
           format: downloadFormat,
           bitrate: downloadBitrate,
-          skipSeparation: true
+          skipSeparation: true,
+          downloadId: dId
         }),
         signal: controller.signal
       });
@@ -565,6 +578,7 @@ const App = () => {
 
       setUploadProgress(100);
       setProcessingStage('CAPTURE COMPLETED');
+      setActiveDownloadId(null);
 
       const timeoutId = setTimeout(() => {
         setIsProcessing(false);
