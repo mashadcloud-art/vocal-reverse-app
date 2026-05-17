@@ -297,13 +297,13 @@ app.post('/api/separate-vocals', upload.single('audio'), async (req, res) => {
       });
     }
 
-    const vocalsUrl = `http://localhost:3001/files/${folderName}/vocals.wav`;
-    const instrumentalUrl = `http://localhost:3001/files/${folderName}/instrumental.wav`;
-    const bassUrl = `http://localhost:3001/files/${folderName}/bass.wav`;
-    const drumsUrl = `http://localhost:3001/files/${folderName}/drums.wav`;
-    const otherUrl = `http://localhost:3001/files/${folderName}/other.wav`;
-    const guitarUrl = fs.existsSync(guitarPath) ? `http://localhost:3001/files/${folderName}/guitar.wav` : null;
-    const pianoUrl = fs.existsSync(pianoPath) ? `http://localhost:3001/files/${folderName}/piano.wav` : null;
+    const vocalsUrl = `/files/${folderName}/vocals.wav`;
+    const instrumentalUrl = `/files/${folderName}/instrumental.wav`;
+    const bassUrl = `/files/${folderName}/bass.wav`;
+    const drumsUrl = `/files/${folderName}/drums.wav`;
+    const otherUrl = `/files/${folderName}/other.wav`;
+    const guitarUrl = fs.existsSync(guitarPath) ? `/files/${folderName}/guitar.wav` : null;
+    const pianoUrl = fs.existsSync(pianoPath) ? `/files/${folderName}/piano.wav` : null;
 
     console.log('Separation complete!');
     res.json({
@@ -331,7 +331,7 @@ app.post('/api/separate-vocals', upload.single('audio'), async (req, res) => {
   }
 });
 
-const PORT = 3001;
+const PORT = 3005;
 app.listen(PORT, () => {
   console.log(`Backend server listening on port ${PORT}`);
 });
