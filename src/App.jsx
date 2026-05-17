@@ -47,18 +47,15 @@ const cleanSongTitle = (title) => {
 const API_URL = typeof window !== 'undefined'
   ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
       ? 'http://localhost:3005'
-      : (window.location.hostname.includes('mashad.shop')
-          ? 'http://mashad.shop:3001'
-          : `${window.location.protocol}//${window.location.hostname}:3001`
-        )
+      : `${window.location.protocol}//${window.location.hostname}:3005`
     )
   : 'http://localhost:3005';
 
 const formatApiUrl = (url) => {
   if (!url) return '';
   let targetUrl = url;
-  if (targetUrl.includes('localhost:3001') || targetUrl.includes('localhost:3005')) {
-    targetUrl = targetUrl.replace(/^https?:\/\/localhost:\d+/, '');
+  if (targetUrl.includes('localhost:3001') || targetUrl.includes('localhost:3005') || targetUrl.includes(':3001') || targetUrl.includes(':3005')) {
+    targetUrl = targetUrl.replace(/^https?:\/\/[^/]+:\d+/, '');
   }
   if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) return targetUrl;
   return API_URL + (targetUrl.startsWith('/') ? targetUrl : '/' + targetUrl);
@@ -515,6 +512,13 @@ const App = () => {
     setUploadProgress(10);
     setProcessingStage('VERIFYING HANDSHAKE OVERRIDE...');
 
+    let cleanedUrl = downloadUrl.trim();
+    // Auto-healing URL parser: if the browser's form manager autofilled the site domain before the actual URL
+    const ytSoundcloudMatch = cleanedUrl.match(/(https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|soundcloud\.com|snd\.sc)\S+)/i);
+    if (ytSoundcloudMatch) {
+      cleanedUrl = ytSoundcloudMatch[1];
+    }
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -523,7 +527,7 @@ const App = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: downloadUrl,
+          url: cleanedUrl,
           format: downloadFormat,
           bitrate: downloadBitrate,
           skipSeparation: true
