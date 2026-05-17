@@ -54,20 +54,22 @@ app.post('/api/download-url', async (req, res) => {
   const { url, format = 'wav', skipSeparation = false, bitrate = '320k' } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
-  console.log(`Fetching metadata for: ${url}`);
+  // Dynamic cookies.txt shield detection
+  const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
+  const cookiesFlag = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : '';
+
+  console.log(`Fetching metadata for: ${url} (Cookies: ${fs.existsSync(COOKIES_PATH)})`);
   
   try {
     // 1. Get Title, Thumbnail and Sanitize
     const metadata = await new Promise((resolve, reject) => {
-      // Use --get-title --get-thumbnail --get-id
-      exec(`yt-dlp --get-title --get-thumbnail --get-id --no-playlist "${url}"`, (error, stdout) => {
+      exec(`yt-dlp ${cookiesFlag} --get-title --get-thumbnail --get-id --no-playlist "${url}"`, (error, stdout) => {
         if (error) return reject(error);
         const lines = stdout.trim().split('\n');
         const title = lines[0]?.trim() || 'downloaded_audio';
         let thumbnail = lines[1]?.trim() || null;
         const videoId = lines[2]?.trim() || null;
         
-        // Fallback for YouTube thumbnails if yt-dlp fails to provide a direct link
         if (!thumbnail && videoId && url.includes('youtube.com')) {
           thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
         }
@@ -86,12 +88,12 @@ app.post('/api/download-url', async (req, res) => {
     
     console.log(`Downloading: ${safeTitle} in ${extension} (${bitrate})`);
     
-    // 2. Download with explicit output template
+    // 2. Download with cookies and explicit output template
     await new Promise((resolve, reject) => {
       const formatFlag = extension === 'wav' ? 'wav' : (extension === 'mp3' ? 'mp3' : 'flac');
       const qualityFlag = extension === 'mp3' ? `--audio-quality ${bitrate}` : '--audio-quality 0';
-      // Use --ffmpeg-location if needed, but it's in PATH.
-      exec(`yt-dlp --no-playlist -f "ba" -x --audio-format ${formatFlag} ${qualityFlag} -o "${outputPath}" "${url}"`, (error, stdout, stderr) => {
+      
+      exec(`yt-dlp ${cookiesFlag} --no-playlist -f "ba" -x --audio-format ${formatFlag} ${qualityFlag} -o "${outputPath}" "${url}"`, (error, stdout, stderr) => {
         if (error) {
           console.error('yt-dlp error:', stderr || stdout || error.message);
           return reject(error);
@@ -100,7 +102,7 @@ app.post('/api/download-url', async (req, res) => {
       });
     });
 
-    // 3. Find the file (yt-dlp adds the extension)
+    // 3. Find the file
     const files = fs.readdirSync(UPLOADS_DIR);
     const downloadedFile = files.find(f => f.startsWith(safeTitle));
     
@@ -109,15 +111,14 @@ app.post('/api/download-url', async (req, res) => {
     const fullPath = path.join(UPLOADS_DIR, downloadedFile);
     const stats = fs.statSync(fullPath);
     
-    if (stats.size < 10000) { // Less than 10KB is likely a failed download or metadata
-       throw new Error(`Download failed: File too small (${stats.size} bytes). Check URL.`);
+    if (stats.size < 10000) {
+        throw new Error(`Download failed: File too small (${stats.size} bytes). Check URL.`);
     }
 
     if (skipSeparation) {
-      // For direct downloads, we can just serve from uploads to be safe
       return res.json({ 
         success: true, 
-        directUrl: `http://localhost:3001/files/uploads/${downloadedFile}`,
+        directUrl: `/files/uploads/${downloadedFile}`,
         fileName: downloadedFile,
         thumbnail: metadata.thumbnail
       });
@@ -128,8 +129,7 @@ app.post('/api/download-url', async (req, res) => {
       filePath: fullPath,
       fileName: downloadedFile,
       thumbnail: metadata.thumbnail,
-      // Provide a direct URL for preview if needed
-      previewUrl: `http://localhost:3001/files/uploads/${downloadedFile}`
+      previewUrl: `/files/uploads/${downloadedFile}`
     });
   } catch (err) {
     console.error('Download process failed:', err);
