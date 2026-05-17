@@ -44,9 +44,25 @@ const cleanSongTitle = (title) => {
   return cleaned.trim();
 };
 
-const API_URL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://localhost:3001'
-  : (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001');
+const API_URL = typeof window !== 'undefined'
+  ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:3005'
+      : (window.location.hostname.includes('mashad.shop')
+          ? 'http://mashad.shop:3001'
+          : `${window.location.protocol}//${window.location.hostname}:3001`
+        )
+    )
+  : 'http://localhost:3005';
+
+const formatApiUrl = (url) => {
+  if (!url) return '';
+  let targetUrl = url;
+  if (targetUrl.includes('localhost:3001') || targetUrl.includes('localhost:3005')) {
+    targetUrl = targetUrl.replace(/^https?:\/\/localhost:\d+/, '');
+  }
+  if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) return targetUrl;
+  return API_URL + (targetUrl.startsWith('/') ? targetUrl : '/' + targetUrl);
+};
 
 const App = () => {
   // Navigation: 'landing', 'downloader', 'fullPlayer', 'separator', 'stealth'
@@ -54,6 +70,25 @@ const App = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStage, setProcessingStage] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  const abortControllerRef = useRef(null);
+  const processingIntervalRef = useRef(null);
+
+  const cancelProcessing = () => {
+    if (processingIntervalRef.current) {
+      clearInterval(processingIntervalRef.current);
+      processingIntervalRef.current = null;
+    }
+    if (abortControllerRef.current) {
+      if (typeof abortControllerRef.current.abort === 'function') {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = null;
+    }
+    setIsProcessing(false);
+    setUploadProgress(0);
+    setProcessingStage('');
+  };
 
   // --- Downloader and Library States ---
   const [downloadUrl, setDownloadUrl] = useState('');
@@ -120,23 +155,27 @@ const App = () => {
     setUploadProgress(0);
     setProcessingStage('LOADING CACHED AUDIO...');
     
+    if (processingIntervalRef.current) clearInterval(processingIntervalRef.current);
+    
     const interval = setInterval(() => {
       setUploadProgress(prev => {
         if (prev >= 100) {
           clearInterval(interval);
+          processingIntervalRef.current = null;
           setIsProcessing(false);
-          setVocalsUrl(track.vocalsUrl || track.url);
-          setInstrumentalUrl(track.instrumentalUrl || track.url);
-          setBassUrl(track.bassUrl || '');
-          setDrumsUrl(track.drumsUrl || '');
-          setOtherUrl(track.otherUrl || '');
-          setGuitarUrl(track.guitarUrl || '');
-          setPianoUrl(track.pianoUrl || '');
+          setVocalsUrl(formatApiUrl(track.vocalsUrl || track.url));
+          setInstrumentalUrl(formatApiUrl(track.instrumentalUrl || track.url));
+          setBassUrl(formatApiUrl(track.bassUrl || ''));
+          setDrumsUrl(formatApiUrl(track.drumsUrl || ''));
+          setOtherUrl(formatApiUrl(track.otherUrl || ''));
+          setGuitarUrl(formatApiUrl(track.guitarUrl || ''));
+          setPianoUrl(formatApiUrl(track.pianoUrl || ''));
           return 100;
         }
         return prev + 25;
       });
     }, 150);
+    processingIntervalRef.current = interval;
   };
 
   const handleLibrarySplit = async () => {
@@ -145,16 +184,20 @@ const App = () => {
     setUploadProgress(10);
     setProcessingStage('INITIALIZING AI PIPELINE...');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const modelParam = separationModel === 'deep' ? 'pro' : 'fast';
-      const response = await fetch(API_URL + '/soundrip-api/separate-vocals', {
+      const response = await fetch(API_URL + '/api/separate-vocals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filePath: `uploads/${selectedLibraryTrack.title}`,
           fileName: selectedLibraryTrack.title,
           model: modelParam
-        })
+        }),
+        signal: controller.signal
       });
 
       if (!response.ok) throw new Error('AI separator backend error');
@@ -167,18 +210,25 @@ const App = () => {
       setUploadProgress(90);
       setProcessingStage('COMPILING MULTITRACK OUTPUT...');
       
-      setTimeout(() => {
+      const timeout1 = setTimeout(() => {
         finishProcessing(data);
         setSongName(selectedLibraryTrack.title);
         setUploadProgress(100);
         setProcessingStage('AI SEPARATION COMPLETE');
-        setTimeout(() => {
+        const timeout2 = setTimeout(() => {
           setIsProcessing(false);
           setSelectedLibraryTrack(null);
+          abortControllerRef.current = null;
         }, 800);
+        processingIntervalRef.current = timeout2;
       }, 1000);
+      processingIntervalRef.current = timeout1;
 
     } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('AI Separation cancelled by user.');
+        return;
+      }
       console.error(err);
       alert('AI Separation failed: ' + (err.message || 'Server error.'));
       setIsProcessing(false);
@@ -360,12 +410,16 @@ const App = () => {
 
   // Helper for Same-Origin secure downloads
   const downloadBlob = async (url, filename) => {
+    setIsProcessing(true);
+    setUploadProgress(10);
+    setProcessingStage('DOWNLOADING TO CLOUD...');
+    
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      setProcessingStage('DOWNLOADING TO CLOUD...');
-      setIsProcessing(true);
-      setUploadProgress(10);
-      
-      const response = await fetch(url);
+      const fullUrl = formatApiUrl(url);
+      const response = await fetch(fullUrl, { signal: controller.signal });
       if (!response.ok) throw new Error('Network response was not ok');
       setUploadProgress(40);
       
@@ -383,8 +437,16 @@ const App = () => {
       
       setUploadProgress(100);
       setProcessingStage('DOWNLOAD COMPLETE');
-      setTimeout(() => setIsProcessing(false), 800);
+      const timeoutId = setTimeout(() => {
+        setIsProcessing(false);
+        abortControllerRef.current = null;
+      }, 800);
+      processingIntervalRef.current = timeoutId;
     } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('Download cancelled by user.');
+        return;
+      }
       console.error('Blob download failed', err);
       setIsProcessing(false);
       window.open(url, '_blank');
@@ -406,7 +468,8 @@ const App = () => {
     formData.append('model', separationModel);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', API_URL + '/soundrip-api/separate-vocals', true);
+    abortControllerRef.current = xhr;
+    xhr.open('POST', API_URL + '/api/separate-vocals', true);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -425,11 +488,21 @@ const App = () => {
         alert('AI Separation failed. Server error.');
         setIsProcessing(false);
       }
+      abortControllerRef.current = null;
     };
 
     xhr.onerror = () => {
+      if (xhr.status === 0) {
+        console.log('Upload aborted by user.');
+        return;
+      }
       alert('Network Error connecting to separator backend.');
       setIsProcessing(false);
+      abortControllerRef.current = null;
+    };
+
+    xhr.onabort = () => {
+      console.log('Upload aborted by user.');
     };
 
     xhr.send(formData);
@@ -442,8 +515,11 @@ const App = () => {
     setUploadProgress(10);
     setProcessingStage('VERIFYING HANDSHAKE OVERRIDE...');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const response = await fetch(API_URL + '/soundrip-api/download-url', {
+      const response = await fetch(API_URL + '/api/download-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -451,7 +527,8 @@ const App = () => {
           format: downloadFormat,
           bitrate: downloadBitrate,
           skipSeparation: true
-        })
+        }),
+        signal: controller.signal
       });
       const dlData = await response.json();
       if (!dlData.success) throw new Error(dlData.error || 'YouTube fetch denied.');
@@ -475,32 +552,31 @@ const App = () => {
       setUploadProgress(100);
       setProcessingStage('CAPTURE COMPLETED');
 
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         setIsProcessing(false);
         setView('fullPlayer');
         downloadBlob(dlData.directUrl, dlData.fileName);
       }, 1000);
+      processingIntervalRef.current = timeoutId;
 
     } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('Capture cancelled by user.');
+        return;
+      }
       alert('Capture failed: ' + (err.message || 'Server offline. Check local server terminal.'));
       setIsProcessing(false);
     }
   };
 
   const finishProcessing = (data) => {
-    setVocalsUrl(data.vocalsUrl);
-    setInstrumentalUrl(data.instrumentalUrl);
-    setBassUrl(data.vocalsUrl); // Fallback for mixer display
-    setDrumsUrl(data.vocalsUrl);
-    setOtherUrl(data.vocalsUrl);
-
-    setVocalsUrl(data.vocalsUrl);
-    setInstrumentalUrl(data.instrumentalUrl);
-    if (data.bassUrl) setBassUrl(data.bassUrl);
-    if (data.drumsUrl) setDrumsUrl(data.drumsUrl);
-    if (data.otherUrl) setOtherUrl(data.otherUrl);
-    if (data.guitarUrl) setGuitarUrl(data.guitarUrl);
-    if (data.pianoUrl) setPianoUrl(data.pianoUrl);
+    setVocalsUrl(formatApiUrl(data.vocalsUrl));
+    setInstrumentalUrl(formatApiUrl(data.instrumentalUrl));
+    setBassUrl(formatApiUrl(data.bassUrl || data.vocalsUrl)); 
+    setDrumsUrl(formatApiUrl(data.drumsUrl || data.vocalsUrl));
+    setOtherUrl(formatApiUrl(data.otherUrl || data.vocalsUrl));
+    if (data.guitarUrl) setGuitarUrl(formatApiUrl(data.guitarUrl));
+    if (data.pianoUrl) setPianoUrl(formatApiUrl(data.pianoUrl));
 
     setProcessingStage('TOPOLOGY SYNAPSE COMPLETED');
     setUploadProgress(100);
@@ -1397,7 +1473,15 @@ const App = () => {
                  <div className="h-3.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5 p-1">
                     <div className="h-full bg-gradient-to-r from-[#c8f564] to-cyan-500 rounded-full transition-all duration-300 shadow-[0_0_20px_rgba(200,245,100,0.4)]" style={{ width: `${uploadProgress}%` }} />
                  </div>
-                 <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.6em]">Establishing virtual pipeline</p>
+                 <p className="text-[8px] font-black text-white/20 uppercase tracking-[0.6em] mb-4">Establishing virtual pipeline</p>
+                 <div className="pt-6">
+                    <button 
+                      onClick={cancelProcessing}
+                      className="px-8 py-3 bg-white/5 border border-white/10 text-white hover:bg-white hover:text-black hover:border-white text-[10px] font-black tracking-widest uppercase rounded-2xl active:scale-95 transition-all shadow-md"
+                    >
+                      Cancel & Go Back
+                    </button>
+                 </div>
               </div>
            </div>
         </div>
