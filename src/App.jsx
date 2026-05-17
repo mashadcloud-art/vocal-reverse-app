@@ -147,7 +147,7 @@ const App = () => {
 
     try {
       const modelParam = separationModel === 'deep' ? 'pro' : 'fast';
-      const response = await fetch(API_URL + '/api/separate-vocals', {
+      const response = await fetch(API_URL + '/soundrip-api/separate-vocals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -406,7 +406,7 @@ const App = () => {
     formData.append('model', separationModel);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', API_URL + '/api/separate-vocals', true);
+    xhr.open('POST', API_URL + '/soundrip-api/separate-vocals', true);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -443,7 +443,7 @@ const App = () => {
     setProcessingStage('VERIFYING HANDSHAKE OVERRIDE...');
 
     try {
-      const response = await fetch(API_URL + '/api/download-url', {
+      const response = await fetch(API_URL + '/soundrip-api/download-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
