@@ -443,47 +443,19 @@ const App = () => {
     };
   }, [view, activeTrack]);
 
-  // Helper for Same-Origin secure downloads
+  // Helper for Same-Origin secure downloads (Zero-lag background trigger)
   const downloadBlob = async (url, filename) => {
-    setIsProcessing(true);
-    setUploadProgress(10);
-    setProcessingStage('DOWNLOADING TO CLOUD...');
-    
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
     try {
       const fullUrl = formatApiUrl(url);
-      const response = await fetch(fullUrl, { signal: controller.signal });
-      if (!response.ok) throw new Error('Network response was not ok');
-      setUploadProgress(40);
-      
-      const blob = await response.blob();
-      setUploadProgress(70);
-      
-      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = blobUrl;
+      a.href = fullUrl;
       a.download = filename;
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-      
-      setUploadProgress(100);
-      setProcessingStage('DOWNLOAD COMPLETE');
-      const timeoutId = setTimeout(() => {
-        setIsProcessing(false);
-        abortControllerRef.current = null;
-      }, 800);
-      processingIntervalRef.current = timeoutId;
     } catch (err) {
-      if (err.name === 'AbortError') {
-        console.log('Download cancelled by user.');
-        return;
-      }
-      console.error('Blob download failed', err);
-      setIsProcessing(false);
+      console.error('Download trigger failed', err);
       window.open(url, '_blank');
     }
   };
@@ -883,7 +855,7 @@ const App = () => {
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#020204]/80 to-[#020204]" />
       </div>
 
-      <header className="absolute top-0 left-0 right-0 p-8 flex justify-between items-center z-10">
+      <header className="absolute top-0 left-0 right-0 p-8 flex justify-between items-center z-50">
         <button onClick={() => setView('downloader')} className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-white hover:text-black transition-all">
           <ChevronRight size={24} className="rotate-180" />
         </button>
