@@ -60,7 +60,7 @@ const App = () => {
   const [downloadFormat, setDownloadFormat] = useState('wav'); // 'wav', 'mp3', 'flac'
   const [downloadBitrate, setDownloadBitrate] = useState('320k');
   const [library, setLibrary] = useState([
-    { id: '1', title: 'ARZ_KIYA_HAI__OFFICIAL_VIDEO', artist: 'COKE STUDIO BHARAT', format: 'WAV', quality: 'Lossless', url: `${API_URL}/files/uploads/Anuv_Jain_X_Lost_Stories___Arz_Kiya_Hai__Official_Video____Coke_Studio_Bharat.wav', thumbnail: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&h=300&fit=crop' }
+    { id: '1', title: 'ARZ_KIYA_HAI__OFFICIAL_VIDEO', artist: 'COKE STUDIO BHARAT', format: 'WAV', quality: 'Lossless', url: API_URL + '/files/uploads/Anuv_Jain_X_Lost_Stories___Arz_Kiya_Hai__Official_Video____Coke_Studio_Bharat.wav', thumbnail: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300&h=300&fit=crop' }
   ]);
   const [activeTrack, setActiveTrack] = useState(library[0]);
   const [selectedLibraryTrack, setSelectedLibraryTrack] = useState(null);
@@ -147,7 +147,7 @@ const App = () => {
 
     try {
       const modelParam = separationModel === 'deep' ? 'pro' : 'fast';
-      const response = await fetch(`${API_URL}/api/separate-vocals`, {
+      const response = await fetch(API_URL + '/api/separate-vocals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -406,7 +406,7 @@ const App = () => {
     formData.append('model', separationModel);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${API_URL}/api/separate-vocals`, true);
+    xhr.open('POST', API_URL + '/api/separate-vocals', true);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -443,7 +443,7 @@ const App = () => {
     setProcessingStage('VERIFYING HANDSHAKE OVERRIDE...');
 
     try {
-      const response = await fetch(`${API_URL}/api/download-url`, {
+      const response = await fetch(API_URL + '/api/download-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
