@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -50,91 +50,121 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+// Store active downloads globally
+const activeDownloads = {};
+
 app.post('/api/download-url', async (req, res) => {
   const { url, format = 'wav', skipSeparation = false, bitrate = '320k' } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
-  // Dynamic cookies.txt shield detection
   const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
-  const cookiesFlag = fs.existsSync(COOKIES_PATH) ? `--cookies "${COOKIES_PATH}"` : '';
+  const downloadId = Date.now().toString();
+  const uniqueId = Date.now();
 
-  console.log(`Fetching metadata for: ${url} (Cookies: ${fs.existsSync(COOKIES_PATH)})`);
-  
   try {
-    // 1. Get Title, Thumbnail and Sanitize
+    // 1. Get metadata first
     const metadata = await new Promise((resolve, reject) => {
-      exec(`yt-dlp --js-runtimes node ${cookiesFlag} --get-title --get-thumbnail --get-id --no-playlist "${url}"`, (error, stdout) => {
-        if (error) return reject(error);
-        const lines = stdout.trim().split('\n');
-        const title = lines[0]?.trim() || 'downloaded_audio';
-        let thumbnail = lines[1]?.trim() || null;
-        const videoId = lines[2]?.trim() || null;
-        
-        if (!thumbnail && videoId && url.includes('youtube.com')) {
-          thumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-        }
+      const args = ['--js-runtimes', 'node'];
+      if (fs.existsSync(COOKIES_PATH)) args.push('--cookies', COOKIES_PATH);
+      args.push('--get-title', '--get-thumbnail', '--get-id', '--no-playlist', url);
 
+      const proc = spawn('yt-dlp', args);
+      let output = '';
+      proc.stdout.on('data', d => output += d.toString());
+      proc.on('close', code => {
+        if (code !== 0) return reject(new Error('Metadata fetch failed'));
+        const lines = output.trim().split('\n');
         resolve({
-          title: title.replace(/[^a-z0-9]/gi, '_').substring(0, 50),
-          thumbnail: thumbnail
+          title: (lines[0]?.trim() || 'downloaded_audio').replace(/[^a-z0-9]/gi, '_').substring(0, 50),
+          thumbnail: lines[1]?.trim() || null
         });
       });
     }).catch(() => ({ title: 'downloaded_audio', thumbnail: null }));
 
-    const uniqueId = Date.now();
     const safeTitle = `${metadata.title}_${uniqueId}`;
-    const extension = format === 'mp3' ? 'mp3' : (format === 'flac' ? 'flac' : 'wav');
+    const extension = format === 'mp3' ? 'mp3' : format === 'flac' ? 'flac' : 'wav';
     const outputPath = path.join(UPLOADS_DIR, `${safeTitle}.%(ext)s`);
-    
-    console.log(`Downloading: ${safeTitle} in ${extension} (${bitrate})`);
-    
-    // 2. Download with cookies and explicit output template
+
+    // 2. Build yt-dlp args
+    const args = ['--js-runtimes', 'node'];
+    if (fs.existsSync(COOKIES_PATH)) args.push('--cookies', COOKIES_PATH);
+    args.push('--no-playlist', '-f', 'ba', '-x', '--audio-format', extension);
+    if (extension === 'mp3') args.push('--audio-quality', bitrate);
+    else args.push('--audio-quality', '0');
+    args.push('-o', outputPath, url);
+
+    // 3. Spawn and track
     await new Promise((resolve, reject) => {
-      const formatFlag = extension === 'wav' ? 'wav' : (extension === 'mp3' ? 'mp3' : 'flac');
-      const qualityFlag = extension === 'mp3' ? `--audio-quality ${bitrate}` : '--audio-quality 0';
-      
-      exec(`yt-dlp --js-runtimes node ${cookiesFlag} --no-playlist -f "ba" -x --audio-format ${formatFlag} ${qualityFlag} -o "${outputPath}" "${url}"`, (error, stdout, stderr) => {
-        if (error) {
-          console.error('yt-dlp error:', stderr || stdout || error.message);
-          return reject(error);
-        }
-        resolve();
+      const proc = spawn('yt-dlp', args);
+      activeDownloads[downloadId] = proc;
+
+      let progressData = '';
+      proc.stderr.on('data', d => {
+        progressData += d.toString();
+        console.log('yt-dlp:', d.toString());
+      });
+
+      proc.on('close', code => {
+        delete activeDownloads[downloadId];
+        if (code === 0) resolve();
+        else reject(new Error(`yt-dlp exited with code ${code}`));
+      });
+
+      proc.on('error', err => {
+        delete activeDownloads[downloadId];
+        reject(err);
       });
     });
 
-    // 3. Find the file
+    // 4. Find and return file
     const files = fs.readdirSync(UPLOADS_DIR);
     const downloadedFile = files.find(f => f.startsWith(safeTitle));
-    
-    if (!downloadedFile) throw new Error('Download failed: File not found');
+    if (!downloadedFile) throw new Error('File not found after download');
 
     const fullPath = path.join(UPLOADS_DIR, downloadedFile);
     const stats = fs.statSync(fullPath);
-    
-    if (stats.size < 10000) {
-        throw new Error(`Download failed: File too small (${stats.size} bytes). Check URL.`);
-    }
+    if (stats.size < 10000) throw new Error(`File too small (${stats.size} bytes)`);
 
     if (skipSeparation) {
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
+        downloadId,
         directUrl: `/files/uploads/${downloadedFile}`,
         fileName: downloadedFile,
         thumbnail: metadata.thumbnail
       });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
+      downloadId,
       filePath: fullPath,
       fileName: downloadedFile,
       thumbnail: metadata.thumbnail,
       previewUrl: `/files/uploads/${downloadedFile}`
     });
+
   } catch (err) {
-    console.error('Download process failed:', err);
+    console.error('Download failed:', err);
     res.status(500).json({ error: err.message || 'Failed to download audio.' });
   }
+});
+
+// ⏹️ Cancel endpoint
+app.post('/api/cancel/:id', (req, res) => {
+  const proc = activeDownloads[req.params.id];
+  if (proc) {
+    proc.kill('SIGTERM');
+    delete activeDownloads[req.params.id];
+    return res.json({ success: true, message: 'Download cancelled' });
+  }
+  res.status(404).json({ error: 'Download not found' });
+});
+
+// 📊 Progress endpoint (poll this from frontend)
+app.get('/api/status/:id', (req, res) => {
+  const isActive = !!activeDownloads[req.params.id];
+  res.json({ active: isActive, downloadId: req.params.id });
 });
 
 app.post('/api/upload', upload.single('audio'), (req, res) => {
