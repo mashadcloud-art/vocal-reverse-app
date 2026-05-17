@@ -46,10 +46,10 @@ const cleanSongTitle = (title) => {
 
 const API_URL = typeof window !== 'undefined'
   ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://localhost:3005'
-      : `${window.location.protocol}//${window.location.hostname}:3005`
+      ? 'http://localhost:3005/api'
+      : `${window.location.protocol}//${window.location.hostname}/soundrip-api`
     )
-  : 'http://localhost:3005';
+  : 'http://localhost:3005/api';
 
 const formatApiUrl = (url) => {
   if (!url) return '';
@@ -58,7 +58,20 @@ const formatApiUrl = (url) => {
     targetUrl = targetUrl.replace(/^https?:\/\/[^/]+:\d+/, '');
   }
   if (targetUrl.startsWith('http://') || targetUrl.startsWith('https://')) return targetUrl;
-  return API_URL + (targetUrl.startsWith('/') ? targetUrl : '/' + targetUrl);
+
+  // On the cloud: Nginx handles standard /files/ proxy on port 80/443 directly
+  if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+    if (targetUrl.startsWith('/files')) {
+      return `${window.location.protocol}//${window.location.hostname}${targetUrl}`;
+    }
+  }
+
+  // On localhost: strip '/api' suffix if loading static asset files
+  let base = API_URL;
+  if (base.endsWith('/api') && targetUrl.startsWith('/files')) {
+    base = base.replace(/\/api$/, '');
+  }
+  return base + (targetUrl.startsWith('/') ? targetUrl : '/' + targetUrl);
 };
 
 const App = () => {
@@ -466,7 +479,7 @@ const App = () => {
 
     const xhr = new XMLHttpRequest();
     abortControllerRef.current = xhr;
-    xhr.open('POST', API_URL + '/api/separate-vocals', true);
+    xhr.open('POST', API_URL + '/separate-vocals', true);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -523,7 +536,7 @@ const App = () => {
     abortControllerRef.current = controller;
 
     try {
-      const response = await fetch(API_URL + '/api/download-url', {
+      const response = await fetch(API_URL + '/download-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
