@@ -63,7 +63,7 @@ app.post('/api/download-url', async (req, res) => {
   try {
     // 1. Get Title, Thumbnail and Sanitize
     const metadata = await new Promise((resolve, reject) => {
-      exec(`yt-dlp --js-runtimes node ${cookiesFlag} --extractor-args "youtube:player_client=android" --get-title --get-thumbnail --get-id --no-playlist "${url}"`, (error, stdout) => {
+      exec(`yt-dlp --js-runtimes node ${cookiesFlag} --get-title --get-thumbnail --get-id --no-playlist "${url}"`, (error, stdout) => {
         if (error) return reject(error);
         const lines = stdout.trim().split('\n');
         const title = lines[0]?.trim() || 'downloaded_audio';
@@ -93,7 +93,7 @@ app.post('/api/download-url', async (req, res) => {
       const formatFlag = extension === 'wav' ? 'wav' : (extension === 'mp3' ? 'mp3' : 'flac');
       const qualityFlag = extension === 'mp3' ? `--audio-quality ${bitrate}` : '--audio-quality 0';
       
-      exec(`yt-dlp --js-runtimes node ${cookiesFlag} --extractor-args "youtube:player_client=android" --no-playlist -f "ba" -x --audio-format ${formatFlag} ${qualityFlag} -o "${outputPath}" "${url}"`, (error, stdout, stderr) => {
+      exec(`yt-dlp --js-runtimes node ${cookiesFlag} --no-playlist -f "ba" -x --audio-format ${formatFlag} ${qualityFlag} -o "${outputPath}" "${url}"`, (error, stdout, stderr) => {
         if (error) {
           console.error('yt-dlp error:', stderr || stdout || error.message);
           return reject(error);
