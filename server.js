@@ -149,73 +149,60 @@ app.post('/api/download-url', async (req, res) => {
     // Queue the heavy download subprocess execution task to protect server CPU/RAM
     console.log(`[Downloader Queue] Enqueueing job for url: ${url}`);
     const downloadResult = await downloadQueue.enqueue(async () => {
-      // 1. Primary Zero-Cookie Bypass Strategy (via Cobalt API)
-      let cobaltSuccess = false;
-      let cobaltFile = null;
-      let cobaltTitle = 'downloaded_audio';
+      // 1. Primary Zero-Cookie Bypass Strategy (via RapidAPI youtube-mp36)
+      let rapidApiSuccess = false;
+      let rapidApiFile = null;
+      let rapidApiTitle = 'downloaded_audio';
       const fileExt = format === 'mp3' ? 'mp3' : format === 'flac' ? 'flac' : 'wav';
       const cleanTitle = `audio_${Date.now()}`;
-      const cobaltOutputPath = path.join(UPLOADS_DIR, `${cleanTitle}_${uniqueId}.${fileExt}`);
+      const rapidApiOutputPath = path.join(UPLOADS_DIR, `${cleanTitle}_${uniqueId}.${fileExt}`);
 
-      const cobaltInstances = [
-        'https://api.cobalt.tools',
-        'https://cobalt.shrunkle.icu',
-        'https://cobalt.api.ryo.sh',
-        'https://cobalt.k00.fr',
-        'https://cobalt.v0.co.ua'
-      ];
+      try {
+        const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+        const videoId = videoIdMatch ? videoIdMatch[1] : null;
 
-      for (const instance of cobaltInstances) {
-        try {
-          console.log(`[Cobalt Bypass] Attempting zero-cookie extraction via: ${instance}`);
-          const cobaltResponse = await fetch(instance, {
-            method: 'POST',
+        if (videoId) {
+          console.log(`[RapidAPI Bypass] Attempting extraction for videoId: ${videoId}`);
+          const rapidResponse = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+            method: 'GET',
             headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              url: url,
-              downloadMode: 'audio',
-              audioFormat: fileExt === 'flac' ? 'wav' : fileExt,
-              audioBitrate: '320'
-            })
+              'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com',
+              'x-rapidapi-key': '219cb6dd57mshade28004b8f12cfp12a153jsnc7f53ea593b0'
+            }
           });
 
-          if (!cobaltResponse.ok) throw new Error(`HTTP Status ${cobaltResponse.status}`);
-          const cobaltData = await cobaltResponse.json();
-          if (!cobaltData.url) throw new Error(cobaltData.text || 'No download URL returned');
+          if (!rapidResponse.ok) throw new Error(`HTTP Status ${rapidResponse.status}`);
+          const rapidData = await rapidResponse.json();
 
-          cobaltTitle = (cobaltData.filename || 'downloaded_audio')
+          if (rapidData.status !== 'ok' || !rapidData.link) {
+            throw new Error(rapidData.msg || 'No download URL returned from RapidAPI');
+          }
+
+          rapidApiTitle = (rapidData.title || 'downloaded_audio')
             .replace(/\.[^/.]+$/, "") // strip extension
             .replace(/[^a-z0-9]/gi, '_')
             .substring(0, 50);
 
-          console.log(`[Cobalt Bypass] Stream URL acquired! Downloading direct audio stream: ${cobaltData.url}`);
-          const fileStreamResponse = await fetch(cobaltData.url);
+          console.log(`[RapidAPI Bypass] Stream URL acquired! Downloading direct audio stream...`);
+          const fileStreamResponse = await fetch(rapidData.link);
           if (!fileStreamResponse.ok) throw new Error(`Failed to stream direct audio file. HTTP ${fileStreamResponse.status}`);
 
           const arrayBuf = await fileStreamResponse.arrayBuffer();
-          fs.writeFileSync(cobaltOutputPath, Buffer.from(arrayBuf));
-          console.log(`[Cobalt Bypass] Direct stream successfully saved: ${cobaltOutputPath}`);
+          fs.writeFileSync(rapidApiOutputPath, Buffer.from(arrayBuf));
+          console.log(`[RapidAPI Bypass] Direct stream successfully saved: ${rapidApiOutputPath}`);
 
-          cobaltFile = `${cleanTitle}_${uniqueId}.${fileExt}`;
-          cobaltSuccess = true;
-          break;
-        } catch (e) {
-          console.warn(`[Cobalt Bypass] Instance ${instance} failed:`, e.message);
+          rapidApiFile = `${cleanTitle}_${uniqueId}.${fileExt}`;
+          rapidApiSuccess = true;
+          
+          return {
+            filePath: rapidApiOutputPath,
+            fileName: rapidApiFile,
+            thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+            directUrl: `/files/uploads/${rapidApiFile}`
+          };
         }
-      }
-
-      // If Cobalt succeeded, bypass yt-dlp entirely and return!
-      if (cobaltSuccess) {
-        console.log(`[Downloader] Cobalt bypass strategy succeeded! File: ${cobaltFile}`);
-        return {
-          filePath: cobaltOutputPath,
-          fileName: cobaltFile,
-          thumbnail: null,
-          directUrl: `/files/uploads/${cobaltFile}`
-        };
+      } catch (e) {
+        console.warn(`[RapidAPI Bypass] Failed:`, e.message);
       }
       // 2. Secondary Zero-Cookie Bypass (Piped API Network)
       let pipedSuccess = false;
