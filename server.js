@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import dns from 'dns';
+import ytSearch from 'yt-search';
 
 // Force Node.js to prioritize IPv4 over IPv6 to resolve Oracle Cloud outbound DNS failures
 dns.setDefaultResultOrder('ipv4first');
@@ -93,6 +94,31 @@ class JobQueue {
 
 const downloadQueue = new JobQueue(2);
 const activeDownloads = {};
+
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.status(400).json({ error: 'Search query is required' });
+    
+    console.log(`[Search API] Searching YouTube for: ${q}`);
+    const results = await ytSearch(q);
+    
+    // Return top 10 video results
+    const videos = results.videos.slice(0, 10).map(v => ({
+      id: v.videoId,
+      title: v.title,
+      artist: v.author?.name || 'YouTube',
+      duration: v.timestamp,
+      thumbnail: v.thumbnail,
+      url: v.url
+    }));
+    
+    res.json({ success: true, results: videos });
+  } catch (error) {
+    console.error('[Search API] Failed:', error);
+    res.status(500).json({ success: false, error: 'Search failed' });
+  }
+});
 
 app.post('/api/download-url', async (req, res) => {
   const { url, format = 'wav', skipSeparation = false, bitrate = '320k', downloadId = Date.now().toString(), cookies: clientCookies } = req.body;

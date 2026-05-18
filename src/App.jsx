@@ -46,10 +46,10 @@ const cleanSongTitle = (title) => {
 
 const API_URL = typeof window !== 'undefined'
   ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://localhost:3005/api'
+      ? 'http://localhost:3005'
       : `${window.location.protocol}//${window.location.hostname}/soundrip-api`
     )
-  : 'http://localhost:3005/api';
+  : 'http://localhost:3005';
 
 const formatApiUrl = (url) => {
   if (!url) return '';
@@ -158,6 +158,7 @@ const App = () => {
   const [activeTrack, setActiveTrack] = useState(library[0]);
   const [selectedLibraryTrack, setSelectedLibraryTrack] = useState(null);
   const [activeDownloadId, setActiveDownloadId] = useState(null);
+  const [searchResults, setSearchResults] = useState(null);
 
   // --- Separator (Splitter) States ---
   const [file, setFile] = useState(null);
@@ -585,9 +586,6 @@ const App = () => {
   // URL downloader and dynamic YouTube siphoning
   const handleUniversalCapture = async () => {
     if (!downloadUrl) return;
-    setIsProcessing(true);
-    setUploadProgress(10);
-    setProcessingStage('VERIFYING HANDSHAKE OVERRIDE...');
 
     let cleanedUrl = downloadUrl.trim();
     // Auto-healing URL parser: if the browser's form manager autofilled the site domain before the actual URL
@@ -595,6 +593,33 @@ const App = () => {
     if (ytSoundcloudMatch) {
       cleanedUrl = ytSoundcloudMatch[1];
     }
+
+    // If it doesn't look like a URL, perform a search instead
+    if (!cleanedUrl.startsWith('http://') && !cleanedUrl.startsWith('https://')) {
+      setIsProcessing(true);
+      setProcessingStage('SEARCHING DATABASE...');
+      try {
+        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(cleanedUrl)}`);
+        const data = await res.json();
+        if (data.success && data.results) {
+          setSearchResults(data.results);
+        }
+      } catch (err) {
+        console.error("Search failed", err);
+      }
+      setIsProcessing(false);
+      setProcessingStage('');
+      return;
+    }
+
+    handleDirectDownload(cleanedUrl);
+  };
+
+  const handleDirectDownload = async (targetUrl) => {
+    setSearchResults(null);
+    setIsProcessing(true);
+    setUploadProgress(10);
+    setProcessingStage('VERIFYING HANDSHAKE OVERRIDE...');
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -607,7 +632,7 @@ const App = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: cleanedUrl,
+          url: targetUrl,
           format: downloadFormat,
           bitrate: downloadBitrate,
           skipSeparation: true,
@@ -1219,32 +1244,55 @@ const App = () => {
                      </div>
                    </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                         <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Container</span>
-                         <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
-                            {['wav', 'mp3', 'flac'].map(fmt => (
-                              <button key={fmt} onClick={() => setDownloadFormat(fmt)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadFormat === fmt ? 'bg-white text-black' : 'text-gray-500 hover:text-white'}`}>{fmt}</button>
-                            ))}
+                   {searchResults ? (
+                      <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                         <div className="flex justify-between items-center mb-4">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c8f564]">Search Results</span>
+                            <button onClick={() => setSearchResults(null)} className="text-[9px] text-gray-500 hover:text-white uppercase font-black">Clear</button>
                          </div>
+                         {searchResults.map((res, i) => (
+                            <div key={i} onClick={() => { setDownloadUrl(res.url); handleDirectDownload(res.url); }} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-transparent hover:border-[#c8f564]/30 transition-all">
+                               <img src={res.thumbnail} className="w-16 h-12 object-cover rounded-md opacity-80" alt="thumb" />
+                               <div className="flex-1 min-w-0">
+                                  <h4 className="text-[10px] font-bold text-white truncate">{res.title}</h4>
+                                  <p className="text-[8px] font-bold text-gray-500 mt-1 uppercase">{res.artist} • {res.duration}</p>
+                               </div>
+                               <div className="w-8 h-8 rounded-full bg-[#c8f564]/10 flex items-center justify-center">
+                                  <Download size={12} className="text-[#c8f564]" />
+                               </div>
+                            </div>
+                         ))}
                       </div>
-                      <div className="space-y-3">
-                         <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Sample Grade</span>
-                         <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
-                            {['320k', 'lossless'].map(bit => (
-                              <button key={bit} onClick={() => setDownloadBitrate(bit)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadBitrate === bit ? 'bg-[#c8f564] text-black' : 'text-gray-500 hover:text-white'}`}>{bit}</button>
-                            ))}
+                   ) : (
+                      <>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                               <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Container</span>
+                               <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
+                                  {['wav', 'mp3', 'flac'].map(fmt => (
+                                    <button key={fmt} onClick={() => setDownloadFormat(fmt)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadFormat === fmt ? 'bg-white text-black' : 'text-gray-500 hover:text-white'}`}>{fmt}</button>
+                                  ))}
+                               </div>
+                            </div>
+                            <div className="space-y-3">
+                               <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Sample Grade</span>
+                               <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
+                                  {['320k', 'lossless'].map(bit => (
+                                    <button key={bit} onClick={() => setDownloadBitrate(bit)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadBitrate === bit ? 'bg-[#c8f564] text-black' : 'text-gray-500 hover:text-white'}`}>{bit}</button>
+                                  ))}
+                               </div>
+                            </div>
                          </div>
-                      </div>
-                   </div>
 
-                   <button 
-                     onClick={handleUniversalCapture} 
-                     disabled={!downloadUrl || isProcessing}
-                     className="w-full py-6 rounded-[24px] bg-white text-black font-black uppercase tracking-[0.5em] text-[9px] hover:bg-[#c8f564] transition-all active:scale-95 shadow-3xl disabled:opacity-20"
-                   >
-                     Initiate Extraction
-                   </button>
+                         <button 
+                           onClick={handleUniversalCapture} 
+                           disabled={!downloadUrl || isProcessing}
+                           className="w-full py-6 rounded-[24px] bg-white text-black font-black uppercase tracking-[0.5em] text-[9px] hover:bg-[#c8f564] transition-all active:scale-95 shadow-3xl disabled:opacity-20"
+                         >
+                           {downloadUrl && !downloadUrl.startsWith('http') ? 'Search YouTube Database' : 'Initiate Extraction'}
+                         </button>
+                      </>
+                   )}
                 </div>
              </div>
 
