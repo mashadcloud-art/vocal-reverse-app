@@ -54,17 +54,34 @@ const upload = multer({ storage: storage });
 const activeDownloads = {};
 
 app.post('/api/download-url', async (req, res) => {
-  const { url, format = 'wav', skipSeparation = false, bitrate = '320k', downloadId = Date.now().toString() } = req.body;
+  const { url, format = 'wav', skipSeparation = false, bitrate = '320k', downloadId = Date.now().toString(), cookies: clientCookies } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
-  const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
   const uniqueId = Date.now();
+  let activeCookiesPath = null;
+  const tempCookiesFile = path.join(__dirname, `cookies_${downloadId}.txt`);
+
+  // Write client-provided cookies dynamically if sent, otherwise fallback to server's cookies.txt
+  if (clientCookies && clientCookies.trim()) {
+    try {
+      fs.writeFileSync(tempCookiesFile, clientCookies.trim());
+      activeCookiesPath = tempCookiesFile;
+      console.log(`[Downloader] Created dynamic session cookies file: ${tempCookiesFile}`);
+    } catch (e) {
+      console.error("[Downloader] Failed to write dynamic cookies file:", e);
+    }
+  } else {
+    const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
+    if (fs.existsSync(COOKIES_PATH)) {
+      activeCookiesPath = COOKIES_PATH;
+    }
+  }
 
   try {
     // 1. Get metadata using sequential failover strategies
     const metadata = await new Promise(async (resolve) => {
       const baseArgs = ['--js-runtimes', 'node'];
-      if (fs.existsSync(COOKIES_PATH)) baseArgs.push('--cookies', COOKIES_PATH);
+      if (activeCookiesPath) baseArgs.push('--cookies', activeCookiesPath);
       
       const strategies = [
         { name: 'Standard Session', extractorArgs: null, userAgent: null },
@@ -117,7 +134,7 @@ app.post('/api/download-url', async (req, res) => {
 
     // 2. Build base download args
     const baseArgs = ['--js-runtimes', 'node'];
-    if (fs.existsSync(COOKIES_PATH)) baseArgs.push('--cookies', COOKIES_PATH);
+    if (activeCookiesPath) baseArgs.push('--cookies', activeCookiesPath);
     baseArgs.push('--no-playlist', '-f', 'ba', '-x', '--audio-format', extension);
     if (extension === 'mp3') baseArgs.push('--audio-quality', bitrate);
     else baseArgs.push('--audio-quality', '0');
@@ -217,6 +234,16 @@ app.post('/api/download-url', async (req, res) => {
   } catch (err) {
     console.error('Download failed:', err);
     res.status(500).json({ error: err.message || 'Failed to download audio.' });
+  } finally {
+    // Dynamic temporary cookies cleanup
+    if (clientCookies && fs.existsSync(tempCookiesFile)) {
+      try {
+        fs.unlinkSync(tempCookiesFile);
+        console.log(`[Downloader] Successfully cleaned up temp session cookies: ${tempCookiesFile}`);
+      } catch (e) {
+        console.error("[Downloader] Temp cookies cleanup error:", e);
+      }
+    }
   }
 });
 
