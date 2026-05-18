@@ -95,12 +95,42 @@ class JobQueue {
 const downloadQueue = new JobQueue(2);
 const activeDownloads = {};
 
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || ''; // Paste your YouTube API key here if you want to use the official Google API
+
 app.get('/api/search', async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.status(400).json({ error: 'Search query is required' });
-    
-    console.log(`[Search API] Searching YouTube for: ${q}`);
+
+    // 1. Try Google YouTube Data API v3 if a key is provided
+    if (YOUTUBE_API_KEY) {
+      try {
+        console.log(`[Search API] Querying Official YouTube Data API for: ${q}`);
+        const response = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&maxResults=10&key=${YOUTUBE_API_KEY}`
+        );
+        const data = await response.json();
+        
+        if (data.items && data.items.length > 0) {
+          const videos = data.items.map(item => ({
+            id: item.id.videoId,
+            title: item.snippet.title,
+            artist: item.snippet.channelTitle || 'YouTube',
+            duration: 'HQ Stream', // official snippet doesn't return duration, so we use a premium badge tag
+            thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || '',
+            url: `https://youtube.com/watch?v=${item.id.videoId}`
+          }));
+          return res.json({ success: true, results: videos });
+        } else if (data.error) {
+          console.warn(`[Search API] Google API returned quota/auth error: ${data.error.message}. Bypassing to keyless fallback scraper.`);
+        }
+      } catch (apiErr) {
+        console.warn('[Search API] Google API request failed. Bypassing to keyless fallback scraper:', apiErr);
+      }
+    }
+
+    // 2. Fallback: High-Performance Keyless Scraper (Unlimited & Free)
+    console.log(`[Search API] Querying keyless scraping engine for: ${q}`);
     const results = await ytSearch(q);
     
     // Return top 10 video results
