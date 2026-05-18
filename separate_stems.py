@@ -34,6 +34,13 @@ if __name__ == "__main__":
     output_dir = sys.argv[3]
     
     num_cores = multiprocessing.cpu_count()
-    # Explicitly use all available CPU cores for lightning-fast multi-core processing
-    sys.argv = ['demucs', '-n', model_name, '--jobs', str(num_cores), input_file, '-o', output_dir]
+    # Explicitly use all available CPU cores and set overlap to 0.5 for pristine high-fidelity isolation (zero bleed)
+    sys.argv = [
+        'demucs', 
+        '-n', model_name, 
+        '--jobs', str(num_cores), 
+        '--overlap', '0.5', 
+        input_file, 
+        '-o', output_dir
+    ]
     demucs.separate.main()
