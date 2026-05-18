@@ -158,11 +158,11 @@ app.post('/api/download-url', async (req, res) => {
       const cobaltOutputPath = path.join(UPLOADS_DIR, `${cleanTitle}_${uniqueId}.${fileExt}`);
 
       const cobaltInstances = [
-        'https://api.cobalt.tools/api/json',
-        'https://cobalt.shrunkle.icu/api/json',
-        'https://cobalt.api.ryo.sh/api/json',
-        'https://cobalt.k00.fr/api/json',
-        'https://cobalt.v0.co.ua/api/json'
+        'https://api.cobalt.tools',
+        'https://cobalt.shrunkle.icu',
+        'https://cobalt.api.ryo.sh',
+        'https://cobalt.k00.fr',
+        'https://cobalt.v0.co.ua'
       ];
 
       for (const instance of cobaltInstances) {
