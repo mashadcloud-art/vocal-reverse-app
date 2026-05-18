@@ -82,10 +82,31 @@ const App = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [sessionCookies, setSessionCookies] = useState(localStorage.getItem('soundrip_cookies') || '');
+  
+  // Dual-persistence load to survive browser hard resets (combines localStorage + Cookie fallback)
+  const [sessionCookies, setSessionCookies] = useState(() => {
+    try {
+      const local = localStorage.getItem('soundrip_cookies');
+      if (local) return local;
+    } catch (e) {}
+    
+    try {
+      const match = document.cookie.match(/(?:^|; )soundrip_cookies=([^;]*)/);
+      if (match) return decodeURIComponent(match[1]);
+    } catch (e) {}
+    
+    return '';
+  });
 
   useEffect(() => {
-    localStorage.setItem('soundrip_cookies', sessionCookies);
+    try {
+      localStorage.setItem('soundrip_cookies', sessionCookies);
+    } catch (e) {}
+    
+    try {
+      // Set 10-year persistent cookie backup
+      document.cookie = `soundrip_cookies=${encodeURIComponent(sessionCookies)}; max-age=315360000; path=/; SameSite=Lax; Secure`;
+    } catch (e) {}
   }, [sessionCookies]);
 
   const abortControllerRef = useRef(null);
