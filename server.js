@@ -217,59 +217,58 @@ app.post('/api/download-url', async (req, res) => {
           directUrl: `/files/uploads/${cobaltFile}`
         };
       }
-      // 2. Secondary Zero-Cookie Bypass (Invidious API Network)
-      let invidiousSuccess = false;
-      let invidiousFile = null;
-      let invOutputPath = null;
+      // 2. Secondary Zero-Cookie Bypass (Piped API Network)
+      let pipedSuccess = false;
+      let pipedFile = null;
+      let pipedOutputPath = null;
 
       const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
       const videoId = videoIdMatch ? videoIdMatch[1] : null;
 
       if (videoId) {
-        const invidiousInstances = [
-          'https://invidious.jing.rocks',
-          'https://invidious.nerdvpn.de',
-          'https://iv.melmac.space',
-          'https://invidious.lunar.icu'
+        const pipedInstances = [
+          'https://pipedapi.kavin.rocks',
+          'https://pipedapi.drgns.space',
+          'https://api.piped.projectsegfau.lt'
         ];
 
-        for (const instance of invidiousInstances) {
+        for (const instance of pipedInstances) {
           try {
-            console.log(`[Invidious Bypass] Attempting extraction via: ${instance}`);
-            const invRes = await fetch(`${instance}/api/v1/videos/${videoId}`);
-            if (!invRes.ok) throw new Error(`HTTP Status ${invRes.status}`);
-            const invData = await invRes.json();
+            console.log(`[Piped Bypass] Attempting extraction via: ${instance}`);
+            const pipedRes = await fetch(`${instance}/streams/${videoId}`);
+            if (!pipedRes.ok) throw new Error(`HTTP Status ${pipedRes.status}`);
+            const pipedData = await pipedRes.json();
             
-            const audioStream = (invData.adaptiveFormats || []).find(f => f.type && f.type.includes('audio'));
+            const audioStream = (pipedData.audioStreams || []).find(f => f.mimeType && f.mimeType.includes('audio'));
             if (!audioStream || !audioStream.url) throw new Error('No audio stream found');
 
-            const invExt = 'webm';
-            invOutputPath = path.join(UPLOADS_DIR, `${cleanTitle}_${uniqueId}_inv.${invExt}`);
+            const pipedExt = audioStream.format ? audioStream.format.toLowerCase() : 'm4a';
+            pipedOutputPath = path.join(UPLOADS_DIR, `${cleanTitle}_${uniqueId}_piped.${pipedExt}`);
 
-            console.log(`[Invidious Bypass] Stream URL acquired! Downloading...`);
+            console.log(`[Piped Bypass] Stream URL acquired! Downloading from Proxy...`);
             const fileStreamResponse = await fetch(audioStream.url);
             if (!fileStreamResponse.ok) throw new Error(`HTTP ${fileStreamResponse.status}`);
 
             const arrayBuf = await fileStreamResponse.arrayBuffer();
-            fs.writeFileSync(invOutputPath, Buffer.from(arrayBuf));
-            console.log(`[Invidious Bypass] Direct stream successfully saved: ${invOutputPath}`);
+            fs.writeFileSync(pipedOutputPath, Buffer.from(arrayBuf));
+            console.log(`[Piped Bypass] Proxy stream successfully saved: ${pipedOutputPath}`);
 
-            invidiousFile = `${cleanTitle}_${uniqueId}_inv.${invExt}`;
-            invidiousSuccess = true;
+            pipedFile = `${cleanTitle}_${uniqueId}_piped.${pipedExt}`;
+            pipedSuccess = true;
             break;
           } catch (e) {
-            console.warn(`[Invidious Bypass] Instance ${instance} failed:`, e.message);
+            console.warn(`[Piped Bypass] Instance ${instance} failed:`, e.message);
           }
         }
       }
 
-      if (invidiousSuccess) {
-        console.log(`[Downloader] Invidious bypass strategy succeeded! File: ${invidiousFile}`);
+      if (pipedSuccess) {
+        console.log(`[Downloader] Piped bypass strategy succeeded! File: ${pipedFile}`);
         return {
-          filePath: invOutputPath,
-          fileName: invidiousFile,
+          filePath: pipedOutputPath,
+          fileName: pipedFile,
           thumbnail: null,
-          directUrl: `/files/uploads/${invidiousFile}`
+          directUrl: `/files/uploads/${pipedFile}`
         };
       }
 
