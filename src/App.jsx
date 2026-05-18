@@ -1063,10 +1063,15 @@ const App = () => {
               <span className="text-[7px] md:text-[8px] font-bold text-[#c8f564] uppercase tracking-widest leading-none mt-1">by mashad</span>
             </div>
           </div>
-          <a href="upi://pay?pa=919746717166@upi&pn=SoundRip&cu=INR" className="px-4 py-2 md:px-5 md:py-2.5 bg-[#c8f564] text-black text-[9px] md:text-[11px] font-black uppercase tracking-widest rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg shadow-lime-400/20 flex items-center gap-1.5 md:gap-2">
-            <Heart size={10} fill="black" />
-            DONATE
-          </a>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowSettingsModal(true)} className="flex p-2 bg-white/5 border border-white/10 text-white rounded-full hover:bg-[#c8f564] hover:text-black transition-all">
+              <Settings size={14} />
+            </button>
+            <a href="upi://pay?pa=919746717166@upi&pn=SoundRip&cu=INR" className="px-4 py-2 md:px-5 md:py-2.5 bg-[#c8f564] text-black text-[9px] md:text-[11px] font-black uppercase tracking-widest rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg shadow-lime-400/20 flex items-center gap-1.5 md:gap-2">
+              <Heart size={10} fill="black" />
+              DONATE
+            </a>
+          </div>
         </nav>
       )}
 
