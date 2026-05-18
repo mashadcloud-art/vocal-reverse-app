@@ -603,33 +603,68 @@ const App = () => {
     setActiveDownloadId(dId);
 
     try {
-      const response = await fetch(API_URL + '/download-url', {
+      // 1. Client-Side Proxy Downloader Bypass
+      let audioBlob = null;
+      let thumbnail = 'https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=800&h=800&fit=crop';
+      let title = `audio_${Date.now()}`;
+      let finalDirectUrl = '';
+      let finalFileName = '';
+
+      try {
+        const videoIdMatch = cleanedUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+        const videoId = videoIdMatch ? videoIdMatch[1] : null;
+
+        if (!videoId) throw new Error("Invalid YouTube Link");
+
+        setProcessingStage('ACQUIRING DIRECT PROXY STREAM...');
+        const pipedRes = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`, { signal: controller.signal });
+        if (!pipedRes.ok) throw new Error("Proxy connection failed.");
+        
+        const pipedData = await pipedRes.json();
+        const audioStream = (pipedData.audioStreams || []).find(f => f.mimeType && f.mimeType.includes('audio'));
+        
+        if (!audioStream) throw new Error("No audio stream located.");
+
+        setUploadProgress(40);
+        setProcessingStage('DOWNLOADING SECURE STREAM TO BROWSER...');
+        
+        const streamRes = await fetch(audioStream.url, { signal: controller.signal });
+        if (!streamRes.ok) throw new Error("Failed to download proxy stream.");
+        audioBlob = await streamRes.blob();
+        
+      } catch (proxyErr) {
+        throw new Error("Client Proxy Failed: " + proxyErr.message);
+      }
+
+      setUploadProgress(70);
+      setProcessingStage('UPLOADING TO SOUNDRIP ENGINE...');
+
+      const formData = new FormData();
+      formData.append('audio', new File([audioBlob], `${title}.m4a`, { type: audioBlob.type || 'audio/mp4' }));
+
+      const uploadRes = await fetch(API_URL + '/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: cleanedUrl,
-          format: downloadFormat,
-          bitrate: downloadBitrate,
-          skipSeparation: true,
-          downloadId: dId,
-          cookies: sessionCookies
-        }),
+        body: formData,
         signal: controller.signal
       });
-      const dlData = await response.json();
-      if (!dlData.success) throw new Error(dlData.error || 'YouTube fetch denied.');
+
+      const dlData = await uploadRes.json();
+      if (!dlData.success) throw new Error('Upload to SoundRip engine failed.');
+      
+      finalFileName = dlData.fileName;
+      finalDirectUrl = `/files/uploads/${dlData.fileName}`;
 
       setProcessingStage('SIGNAL ACQUIRED. PIPING BLOB...');
-      setUploadProgress(70);
+      setUploadProgress(85);
 
       const capturedTrack = {
         id: Date.now().toString(),
-        title: dlData.fileName,
+        title: finalFileName,
         artist: 'REMOTE STREAM',
-        format: downloadFormat.toUpperCase(),
-        quality: downloadBitrate === '340k' || downloadBitrate === 'lossless' ? 'Lossless' : '320K',
-        url: dlData.directUrl,
-        thumbnail: dlData.thumbnail || 'https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=800&h=800&fit=crop'
+        format: 'M4A',
+        quality: '320K',
+        url: API_URL + finalDirectUrl,
+        thumbnail: thumbnail
       };
 
       setLibrary(prev => [capturedTrack, ...prev]);
@@ -642,7 +677,7 @@ const App = () => {
       const timeoutId = setTimeout(() => {
         setIsProcessing(false);
         setView('fullPlayer');
-        downloadBlob(dlData.directUrl, dlData.fileName);
+        downloadBlob(API_URL + finalDirectUrl, finalFileName);
       }, 1000);
       processingIntervalRef.current = timeoutId;
 
