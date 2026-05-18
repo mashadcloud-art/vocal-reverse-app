@@ -51,6 +51,19 @@ const API_URL = typeof window !== 'undefined'
     )
   : 'http://localhost:3005';
 
+const getEndpointUrl = (pathWithParams) => {
+  if (typeof window !== 'undefined') {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocal) {
+      return `http://localhost:3005/api/${pathWithParams}`;
+    } else {
+      // Production Nginx proxy automatically appends /api/ under the hood, so omit it in the URL
+      return `${window.location.protocol}//${window.location.hostname}/soundrip-api/${pathWithParams}`;
+    }
+  }
+  return `http://localhost:3005/api/${pathWithParams}`;
+};
+
 const formatApiUrl = (url) => {
   if (!url) return '';
   let targetUrl = url;
@@ -137,7 +150,7 @@ const App = () => {
     }
     if (activeDownloadId) {
       try {
-        await fetch(`${API_URL}/cancel/${activeDownloadId}`, { method: 'POST' });
+        await fetch(getEndpointUrl(`cancel/${activeDownloadId}`), { method: 'POST' });
       } catch (e) {
         console.error("Failed to cancel download on server", e);
       }
@@ -172,7 +185,7 @@ const App = () => {
     setIsLiveSearching(true);
     const delayDebounce = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(downloadUrl.trim())}`);
+        const res = await fetch(getEndpointUrl(`search?q=${encodeURIComponent(downloadUrl.trim())}`));
         const data = await res.json();
         if (data.success && data.results) {
           setSearchResults(data.results);
@@ -284,7 +297,7 @@ const App = () => {
 
     try {
       const modelParam = separationModel === 'deep' ? 'pro' : 'fast';
-      const response = await fetch(API_URL + '/api/separate-vocals', {
+      const response = await fetch(getEndpointUrl('separate-vocals'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -625,7 +638,7 @@ const App = () => {
     if (captureMode === 'search' || (!cleanedUrl.startsWith('http://') && !cleanedUrl.startsWith('https://'))) {
       setIsLiveSearching(true);
       try {
-        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(cleanedUrl)}`);
+        const res = await fetch(getEndpointUrl(`search?q=${encodeURIComponent(cleanedUrl)}`));
         const data = await res.json();
         if (data.success && data.results) {
           setSearchResults(data.results);
@@ -653,7 +666,7 @@ const App = () => {
     setActiveDownloadId(dId);
 
     try {
-      const response = await fetch(API_URL + '/api/download-url', {
+      const response = await fetch(getEndpointUrl('download-url'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
