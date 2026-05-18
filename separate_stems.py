@@ -27,9 +27,13 @@ if __name__ == "__main__":
         print("Usage: separate_stems.py <model> <input> <output_dir>")
         sys.exit(1)
         
+    import multiprocessing
+    
     model_name = sys.argv[1]
     input_file = sys.argv[2]
     output_dir = sys.argv[3]
     
-    sys.argv = ['demucs', '-n', model_name, input_file, '-o', output_dir]
+    num_cores = multiprocessing.cpu_count()
+    # Explicitly use all available CPU cores for lightning-fast multi-core processing
+    sys.argv = ['demucs', '-n', model_name, '--jobs', str(num_cores), input_file, '-o', output_dir]
     demucs.separate.main()

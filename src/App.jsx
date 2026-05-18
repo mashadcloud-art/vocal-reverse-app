@@ -338,7 +338,17 @@ const App = () => {
     });
 
     wavesurfer.current.on('timeupdate', () => {
-      setCurrentTime(wavesurfer.current.getCurrentTime());
+      const masterTime = wavesurfer.current.getCurrentTime();
+      setCurrentTime(masterTime);
+      
+      // Auto-synchronize stems dynamically if they drift by more than 0.03s (30ms perfect live lock)
+      getActiveAudios().forEach(aud => {
+        if (aud !== musicAudio.current && !aud.paused) {
+          if (Math.abs(aud.currentTime - masterTime) > 0.03) {
+            aud.currentTime = masterTime;
+          }
+        }
+      });
     });
 
     musicAudio.current.addEventListener('loadedmetadata', () => {
