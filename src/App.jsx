@@ -81,6 +81,13 @@ const App = () => {
   const [processingStage, setProcessingStage] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [sessionCookies, setSessionCookies] = useState(localStorage.getItem('soundrip_cookies') || '');
+
+  useEffect(() => {
+    localStorage.setItem('soundrip_cookies', sessionCookies);
+  }, [sessionCookies]);
+
   const abortControllerRef = useRef(null);
   const processingIntervalRef = useRef(null);
 
@@ -571,7 +578,8 @@ const App = () => {
           format: downloadFormat,
           bitrate: downloadBitrate,
           skipSeparation: true,
-          downloadId: dId
+          downloadId: dId,
+          cookies: sessionCookies
         }),
         signal: controller.signal
       });
@@ -873,7 +881,7 @@ const App = () => {
         <button onClick={() => setView('downloader')} className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] md:tracking-[0.3em] transition-all ${view === 'downloader' ? 'text-[#c8f564]' : 'text-gray-500 hover:text-white'}`}>Capture</button>
         <button onClick={() => setView('separator')} className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] md:tracking-[0.3em] transition-all ${view === 'separator' ? 'text-[#c8f564]' : 'text-gray-500 hover:text-white'}`}>Splitter</button>
         <button onClick={() => setView('stealth')} className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] md:tracking-[0.3em] transition-all ${view === 'stealth' ? 'text-[#c8f564]' : 'text-gray-500 hover:text-white'}`}>Stealth</button>
-        <button className="hidden md:flex p-2.5 bg-white/5 border border-white/10 text-white rounded-xl hover:bg-white hover:text-black transition-all">
+        <button onClick={() => setShowSettingsModal(true)} className="flex p-2.5 bg-white/5 border border-white/10 text-white rounded-xl hover:bg-[#c8f564] hover:text-black transition-all">
           <Settings size={18} />
         </button>
       </div>
@@ -1574,6 +1582,66 @@ const App = () => {
                  </div>
               </div>
            </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-[#020204]/95 backdrop-blur-[50px] z-[4000] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="w-full max-w-lg glass-card p-6 md:p-10 space-y-6 relative overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)] border border-white/10 rounded-[35px] text-left">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings className="text-[#c8f564]" size={20} />
+                <h3 className="font-extrabold text-base md:text-xl tracking-tight text-white uppercase">Studio Settings</h3>
+              </div>
+              <button 
+                onClick={() => setShowSettingsModal(false)}
+                className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white hover:bg-red-500 hover:border-red-500 transition-all animate-in fade-in"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[#c8f564]">YouTube Session Cookies</label>
+                  {sessionCookies && (
+                    <span className="text-[8px] font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20 uppercase tracking-widest animate-pulse">Active</span>
+                  )}
+                </div>
+                <textarea
+                  value={sessionCookies}
+                  onChange={(e) => setSessionCookies(e.target.value)}
+                  placeholder="# Netscape HTTP Cookie File&#10;# Exported from YouTube..."
+                  className="w-full h-48 bg-[#080810]/70 border border-white/10 hover:border-white/20 focus:border-[#c8f564] focus:outline-none rounded-2xl p-4 text-[10px] font-mono text-white/80 transition-all resize-none"
+                />
+                <p className="text-[8px] font-bold text-white/35 uppercase tracking-wide leading-relaxed">
+                  💡 export your youtube cookies in netscape format using a browser extension like <span className="text-[#c8f564] font-black">"Get cookies.txt LOCALLY"</span>. paste the raw text here to bypass all youtube bot limits instantly.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-white/5 flex gap-3">
+              {sessionCookies && (
+                <button
+                  onClick={() => {
+                    setSessionCookies('');
+                    localStorage.removeItem('soundrip_cookies');
+                  }}
+                  className="px-5 py-3 border border-red-500/30 hover:border-red-500 text-red-400 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all active:scale-95"
+                >
+                  Clear Cookies
+                </button>
+              )}
+              <button 
+                onClick={() => setShowSettingsModal(false)}
+                className="flex-1 py-3 bg-[#c8f564] text-black hover:bg-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all active:scale-95 text-center font-bold"
+              >
+                Save Settings
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
