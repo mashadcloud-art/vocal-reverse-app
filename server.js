@@ -149,7 +149,78 @@ app.post('/api/download-url', async (req, res) => {
     // Queue the heavy download subprocess execution task to protect server CPU/RAM
     console.log(`[Downloader Queue] Enqueueing job for url: ${url}`);
     const downloadResult = await downloadQueue.enqueue(async () => {
-      // 1. Get metadata using sequential failover strategies
+      // 1. Primary Zero-Cookie Bypass Strategy (via Cobalt API)
+      let cobaltSuccess = false;
+      let cobaltFile = null;
+      let cobaltTitle = 'downloaded_audio';
+      const fileExt = format === 'mp3' ? 'mp3' : format === 'flac' ? 'flac' : 'wav';
+      const cleanTitle = `audio_${Date.now()}`;
+      const cobaltOutputPath = path.join(UPLOADS_DIR, `${cleanTitle}_${uniqueId}.${fileExt}`);
+
+      const cobaltInstances = [
+        'https://api.cobalt.tools/api/json',
+        'https://cobalt.shrunkle.icu/api/json',
+        'https://cobalt.api.ryo.sh/api/json',
+        'https://cobalt.k00.fr/api/json',
+        'https://cobalt.v0.co.ua/api/json'
+      ];
+
+      for (const instance of cobaltInstances) {
+        try {
+          console.log(`[Cobalt Bypass] Attempting zero-cookie extraction via: ${instance}`);
+          const cobaltResponse = await fetch(instance, {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              url: url,
+              downloadMode: 'audio',
+              audioFormat: fileExt === 'flac' ? 'wav' : fileExt, // Cobalt uses wav/mp3
+              audioBitrate: bitrate ? bitrate.replace('k', '') : '320'
+            })
+          });
+
+          if (!cobaltResponse.ok) throw new Error(`HTTP Status ${cobaltResponse.status}`);
+          const cobaltData = await cobaltResponse.json();
+          if (!cobaltData.url) throw new Error(cobaltData.text || 'No download URL returned');
+
+          cobaltTitle = (cobaltData.filename || 'downloaded_audio')
+            .replace(/\.[^/.]+$/, "") // strip extension
+            .replace(/[^a-z0-9]/gi, '_')
+            .substring(0, 50);
+
+          console.log(`[Cobalt Bypass] Stream URL acquired! Downloading direct audio stream: ${cobaltData.url}`);
+          const fileStreamResponse = await fetch(cobaltData.url);
+          if (!fileStreamResponse.ok) throw new Error(`Failed to stream direct audio file. HTTP ${fileStreamResponse.status}`);
+
+          const arrayBuf = await fileStreamResponse.arrayBuffer();
+          fs.writeFileSync(cobaltOutputPath, Buffer.from(arrayBuf));
+          console.log(`[Cobalt Bypass] Direct stream successfully saved: ${cobaltOutputPath}`);
+
+          cobaltFile = `${cleanTitle}_${uniqueId}.${fileExt}`;
+          cobaltSuccess = true;
+          break;
+        } catch (e) {
+          console.warn(`[Cobalt Bypass] Instance ${instance} failed:`, e.message);
+        }
+      }
+
+      // If Cobalt succeeded, bypass yt-dlp entirely and return!
+      if (cobaltSuccess) {
+        console.log(`[Downloader] Cobalt bypass strategy succeeded! File: ${cobaltFile}`);
+        return {
+          filePath: cobaltOutputPath,
+          fileName: cobaltFile,
+          thumbnail: null,
+          directUrl: `/files/uploads/${cobaltFile}`
+        };
+      }
+
+      console.log(`[Downloader] Cobalt bypass failed. Falling back to local yt-dlp...`);
+
+      // 2. Fallback Strategy: Get metadata using sequential failover strategies
       const metadata = await new Promise(async (resolve) => {
         const baseArgs = ['--js-runtimes', 'node'];
         if (activeCookiesPath) baseArgs.push('--cookies', activeCookiesPath);
