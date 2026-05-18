@@ -151,7 +151,7 @@ app.post('/api/download-url', async (req, res) => {
     const downloadResult = await downloadQueue.enqueue(async () => {
       // 1. Get metadata using sequential failover strategies
       const metadata = await new Promise(async (resolve) => {
-        const baseArgs = ['--js-runtimes', 'node', '--proxy', 'socks5h://127.0.0.1:9050'];
+        const baseArgs = ['--js-runtimes', 'node'];
         if (activeCookiesPath) baseArgs.push('--cookies', activeCookiesPath);
         
         const strategies = [
@@ -204,7 +204,7 @@ app.post('/api/download-url', async (req, res) => {
       const outputPath = path.join(UPLOADS_DIR, `${safeTitle}.%(ext)s`);
 
       // 2. Build base download args
-      const baseArgs = ['--js-runtimes', 'node', '--proxy', 'socks5h://127.0.0.1:9050'];
+      const baseArgs = ['--js-runtimes', 'node'];
       if (activeCookiesPath) baseArgs.push('--cookies', activeCookiesPath);
       baseArgs.push('--no-playlist', '-f', 'ba', '-x', '--audio-format', extension);
       if (extension === 'mp3') baseArgs.push('--audio-quality', bitrate);
