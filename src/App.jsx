@@ -169,6 +169,14 @@ const App = () => {
   const wavesurfer = useRef(null);
 
   const handleLibraryTrackSelect = (track) => {
+    if (!track.vocalsUrl) {
+      setSelectedLibraryTrack(track);
+      setVocalsUrl('');
+      setInstrumentalUrl('');
+      setView('separator');
+      return;
+    }
+
     setSongName(track.title);
     setIsProcessing(true);
     setUploadProgress(0);
@@ -182,8 +190,8 @@ const App = () => {
           clearInterval(interval);
           processingIntervalRef.current = null;
           setIsProcessing(false);
-          setVocalsUrl(formatApiUrl(track.vocalsUrl || track.url));
-          setInstrumentalUrl(formatApiUrl(track.instrumentalUrl || track.url));
+          setVocalsUrl(formatApiUrl(track.vocalsUrl));
+          setInstrumentalUrl(formatApiUrl(track.instrumentalUrl));
           setBassUrl(formatApiUrl(track.bassUrl || ''));
           setDrumsUrl(formatApiUrl(track.drumsUrl || ''));
           setOtherUrl(formatApiUrl(track.otherUrl || ''));
@@ -972,6 +980,24 @@ const App = () => {
           <button className="text-white/40 hover:text-white transition-all"><SkipForward size={24} fill="currentColor" /></button>
           <button className="text-white/20 hover:text-white transition-all"><Repeat size={18} /></button>
         </div>
+
+        <button 
+          onClick={() => {
+            if (directAudio.current) {
+              directAudio.current.pause();
+            }
+            setIsPlaying(false);
+            
+            setSelectedLibraryTrack(activeTrack);
+            setVocalsUrl('');
+            setInstrumentalUrl('');
+            setView('separator');
+          }}
+          className="mt-8 px-8 py-4 bg-purple-600/10 border border-purple-500/30 hover:bg-purple-600 hover:text-white text-purple-300 font-black text-[9px] tracking-[0.25em] uppercase rounded-xl transition-all active:scale-95 shadow-[0_0_35px_rgba(147,51,234,0.15)] flex items-center gap-2"
+        >
+          <Mic size={12} />
+          Isolate Vocals (AI Split)
+        </button>
       </main>
     </div>
   );
