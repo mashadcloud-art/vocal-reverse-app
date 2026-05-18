@@ -621,10 +621,9 @@ const App = () => {
       cleanedUrl = ytSoundcloudMatch[1];
     }
 
-    // If it doesn't look like a URL, perform a search instead
-    if (!cleanedUrl.startsWith('http://') && !cleanedUrl.startsWith('https://')) {
-      setIsProcessing(true);
-      setProcessingStage('SEARCHING DATABASE...');
+    // If in search mode or it doesn't look like a URL, perform a search
+    if (captureMode === 'search' || (!cleanedUrl.startsWith('http://') && !cleanedUrl.startsWith('https://'))) {
+      setIsLiveSearching(true);
       try {
         const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(cleanedUrl)}`);
         const data = await res.json();
@@ -634,8 +633,7 @@ const App = () => {
       } catch (err) {
         console.error("Search failed", err);
       }
-      setIsProcessing(false);
-      setProcessingStage('');
+      setIsLiveSearching(false);
       return;
     }
 
@@ -1312,66 +1310,99 @@ const App = () => {
                        </div>
                     </div>
 
-                    {/* Conditional Action: Live Search Results vs Direct Extraction Button */}
-                    {captureMode === 'search' ? (
-                       searchResults && searchResults.length > 0 && (
-                          <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar border-t border-white/5 pt-4">
-                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c8f564]">Live Search Results</span>
-                                <button onClick={() => { setDownloadUrl(''); setSearchResults(null); }} className="text-[9px] text-gray-500 hover:text-white uppercase font-black">Clear</button>
-                             </div>
-                             {searchResults.map((res, i) => (
-                                <div key={i} onClick={() => { setDownloadUrl(res.url); handleDirectDownload(res.url); }} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-transparent hover:border-[#c8f564]/30 transition-all">
-                                   <img src={res.thumbnail} className="w-16 h-12 object-cover rounded-md opacity-80" alt="thumb" />
-                                   <div className="flex-1 min-w-0">
-                                      <h4 className="text-[10px] font-bold text-white truncate">{res.title}</h4>
-                                      <p className="text-[8px] font-bold text-gray-500 mt-1 uppercase">{res.artist} • {res.duration}</p>
-                                   </div>
-                                   <div className="w-8 h-8 rounded-full bg-[#c8f564]/10 flex items-center justify-center">
-                                      <Download size={12} className="text-[#c8f564]" />
-                                   </div>
-                                </div>
-                             ))}
-                          </div>
-                       )
-                    ) : (
-                       <button 
-                         onClick={handleUniversalCapture} 
-                         disabled={!downloadUrl || isProcessing}
-                         className="w-full py-6 rounded-[24px] bg-white text-black font-black uppercase tracking-[0.5em] text-[9px] hover:bg-[#c8f564] transition-all active:scale-95 shadow-3xl disabled:opacity-20"
-                       >
-                         Initiate Extraction
-                       </button>
-                    )}
+                    {/* Main Extraction Action Button */}
+                    <button 
+                      onClick={handleUniversalCapture} 
+                      disabled={!downloadUrl || isProcessing || isLiveSearching}
+                      className="w-full py-6 rounded-[24px] bg-white text-black font-black uppercase tracking-[0.5em] text-[9px] hover:bg-[#c8f564] transition-all active:scale-95 shadow-3xl disabled:opacity-20"
+                    >
+                      {captureMode === 'search' 
+                        ? (isLiveSearching ? 'Searching Database...' : 'Search Database') 
+                        : 'Initiate Extraction'
+                      }
+                    </button>
                  </div>
               </div>
 
-             {/* Signal History Sidebar */}
+             {/* Dynamic Sidebar (Capture Log vs Live Search Results) */}
              <div className="w-full lg:w-80 glass-card p-6 md:p-8 flex flex-col max-h-[480px]">
-                <div className="flex items-center gap-3 mb-6 px-2">
-                   <Clock size={16} className="text-[#c8f564]" />
-                   <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30">Capture Log</h3>
-                </div>
-                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                   {library.map((track) => (
-                      <div 
-                        key={track.id} 
-                        onClick={() => { setActiveTrack(track); setView('fullPlayer'); }}
-                        className="group flex items-center gap-4 p-3.5 rounded-xl bg-white/5 border border-white/5 hover:border-[#c8f564]/30 cursor-pointer transition-all"
-                      >
-                         <div className="w-10 h-10 rounded-lg overflow-hidden relative group-hover:scale-105 transition-transform flex-shrink-0">
-                            <img src={track.thumbnail} className="w-full h-full object-cover opacity-60" alt="t" />
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                               <Play size={14} fill="white" className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </div>
-                         </div>
-                         <div className="flex-1 min-w-0">
-                            <h4 className="text-[10px] font-black text-white uppercase truncate break-all">{cleanSongTitle(track.title)}</h4>
-                            <p className="text-[8px] font-bold text-gray-600 uppercase tracking-widest mt-1">{track.format} • {track.quality}</p>
-                         </div>
+                {captureMode === 'link' ? (
+                   <>
+                      <div className="flex items-center gap-3 mb-6 px-2">
+                         <Clock size={16} className="text-[#c8f564]" />
+                         <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30">Capture Log</h3>
                       </div>
-                   ))}
-                </div>
+                      <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                         {library.map((track) => (
+                            <div 
+                              key={track.id} 
+                              onClick={() => { setActiveTrack(track); setView('fullPlayer'); }}
+                              className="group flex items-center gap-4 p-3.5 rounded-xl bg-white/5 border border-white/5 hover:border-[#c8f564]/30 cursor-pointer transition-all"
+                            >
+                               <div className="w-10 h-10 rounded-lg overflow-hidden relative group-hover:scale-105 transition-transform flex-shrink-0">
+                                  <img src={track.thumbnail} className="w-full h-full object-cover opacity-60" alt="t" />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                     <Play size={14} fill="white" className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                               </div>
+                               <div className="flex-1 min-w-0">
+                                  <h4 className="text-[10px] font-black text-white uppercase truncate break-all">{cleanSongTitle(track.title)}</h4>
+                                  <p className="text-[8px] font-bold text-gray-600 uppercase tracking-widest mt-1">{track.format} • {track.quality}</p>
+                               </div>
+                            </div>
+                         ))}
+                      </div>
+                   </>
+                ) : (
+                   <>
+                      <div className="flex items-center justify-between mb-6 px-2">
+                         <div className="flex items-center gap-3">
+                            <Search size={16} className="text-[#c8f564]" />
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30">Live Directory</h3>
+                         </div>
+                         {searchResults && searchResults.length > 0 && (
+                            <button onClick={() => { setDownloadUrl(''); setSearchResults(null); }} className="text-[8px] text-gray-500 hover:text-white uppercase font-black tracking-widest">Clear</button>
+                         )}
+                      </div>
+                      <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                         {isLiveSearching ? (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-4 py-16 space-y-4">
+                               <RefreshCw size={24} className="animate-spin text-[#c8f564] opacity-80" />
+                               <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">Querying Server...</span>
+                            </div>
+                         ) : !downloadUrl.trim() ? (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-4 py-16 text-gray-600 space-y-3">
+                               <Search size={28} className="opacity-15 mx-auto" />
+                               <p className="text-[9px] font-black uppercase tracking-widest leading-relaxed">Type a song name on the left for live browsing</p>
+                            </div>
+                         ) : searchResults && searchResults.length > 0 ? (
+                            searchResults.map((res, i) => (
+                               <div 
+                                 key={i} 
+                                 onClick={() => { setDownloadUrl(res.url); handleDirectDownload(res.url); }} 
+                                 className="group flex items-center gap-4 p-3 rounded-xl bg-white/5 border border-white/5 hover:border-[#c8f564]/30 cursor-pointer transition-all active:scale-95"
+                               >
+                                  <div className="w-12 h-9 rounded overflow-hidden flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                                     <img src={res.thumbnail} className="w-full h-full object-cover" alt="thumb" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                     <h4 className="text-[10px] font-black text-white truncate group-hover:text-[#c8f564] transition-colors">{res.title}</h4>
+                                     <p className="text-[8px] font-bold text-gray-500 uppercase mt-0.5 tracking-wider truncate">{res.artist} • {res.duration}</p>
+                                  </div>
+                                  <div className="w-7 h-7 rounded-full bg-[#c8f564]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[#c8f564] group-hover:text-black transition-all">
+                                     <Download size={10} className="text-[#c8f564] group-hover:text-black" />
+                                  </div>
+                               </div>
+                            ))
+                         ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center p-4 py-16 text-gray-600 space-y-3">
+                               <Search size={28} className="opacity-15 mx-auto" />
+                               <p className="text-[9px] font-black uppercase tracking-widest leading-relaxed">No results found or waiting for query...</p>
+                            </div>
+                         )}
+                      </div>
+                   </>
+                )}
              </div>
           </div>
         </main>
