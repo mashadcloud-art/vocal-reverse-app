@@ -98,6 +98,18 @@ const App = () => {
     return '';
   });
 
+  const [logoClicks, setLogoClicks] = useState(0);
+  const handleLogoClick = () => {
+    setLogoClicks(prev => {
+      const next = prev + 1;
+      if (next >= 5) {
+        setShowSettingsModal(true);
+        return 0;
+      }
+      return next;
+    });
+  };
+
   useEffect(() => {
     try {
       localStorage.setItem('soundrip_cookies', sessionCookies);
@@ -890,10 +902,10 @@ const App = () => {
 
   const Navigation = () => (
     <nav className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between px-4 md:px-[6vw] py-5 md:py-6 bg-[#080810]/80 backdrop-blur-3xl border-b border-white/5">
-      <div onClick={() => setView('landing')} className="flex items-center gap-2 md:gap-3 cursor-pointer group flex-shrink-0">
-        <div className="w-2.5 h-2.5 rounded-full bg-[#c8f564] shadow-[0_0_15px_#c8f564] animate-pulse" />
-        <div className="flex flex-col">
-          <span className="font-extrabold text-base md:text-2xl tracking-tighter leading-none text-white">SoundRip</span>
+      <div className="flex items-center gap-2 md:gap-3 group flex-shrink-0">
+        <div onClick={() => setView('landing')} className="w-2.5 h-2.5 rounded-full bg-[#c8f564] shadow-[0_0_15px_#c8f564] animate-pulse cursor-pointer" />
+        <div onClick={handleLogoClick} className="flex flex-col cursor-pointer select-none">
+          <span className="font-extrabold text-base md:text-2xl tracking-tighter leading-none text-white hover:text-[#c8f564] transition-colors">SoundRip</span>
           <span className="text-[7px] md:text-[9px] font-bold text-[#c8f564] uppercase tracking-widest leading-none mt-1">by mashad</span>
         </div>
       </div>
@@ -902,9 +914,6 @@ const App = () => {
         <button onClick={() => setView('downloader')} className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] md:tracking-[0.3em] transition-all ${view === 'downloader' ? 'text-[#c8f564]' : 'text-gray-500 hover:text-white'}`}>Capture</button>
         <button onClick={() => setView('separator')} className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] md:tracking-[0.3em] transition-all ${view === 'separator' ? 'text-[#c8f564]' : 'text-gray-500 hover:text-white'}`}>Splitter</button>
         <button onClick={() => setView('stealth')} className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] md:tracking-[0.3em] transition-all ${view === 'stealth' ? 'text-[#c8f564]' : 'text-gray-500 hover:text-white'}`}>Stealth</button>
-        <button onClick={() => setShowSettingsModal(true)} className="flex p-2.5 bg-white/5 border border-white/10 text-white rounded-xl hover:bg-[#c8f564] hover:text-black transition-all">
-          <Settings size={18} />
-        </button>
       </div>
     </nav>
   );
@@ -1077,17 +1086,14 @@ const App = () => {
       {/* OLD LANDING HEADER NAV BAR */}
       {view === 'landing' && (
         <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 md:px-[6vw] py-4 md:py-5 bg-[#080810]/70 backdrop-blur-2xl border-b border-white/5">
-          <div className="flex items-center gap-2 cursor-pointer flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <div className="w-2 h-2 rounded-full bg-[#c8f564] shadow-[0_0_10px_#c8f564] animate-pulse" />
-            <div className="flex flex-col">
-              <span className="font-extrabold text-base md:text-xl tracking-tight leading-none text-white">SoundRip</span>
+            <div onClick={handleLogoClick} className="flex flex-col cursor-pointer select-none">
+              <span className="font-extrabold text-base md:text-xl tracking-tight leading-none text-white hover:text-[#c8f564] transition-colors">SoundRip</span>
               <span className="text-[7px] md:text-[8px] font-bold text-[#c8f564] uppercase tracking-widest leading-none mt-1">by mashad</span>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowSettingsModal(true)} className="flex p-2 bg-white/5 border border-white/10 text-white rounded-full hover:bg-[#c8f564] hover:text-black transition-all">
-              <Settings size={14} />
-            </button>
             <a href="upi://pay?pa=919746717166@upi&pn=SoundRip&cu=INR" className="px-4 py-2 md:px-5 md:py-2.5 bg-[#c8f564] text-black text-[9px] md:text-[11px] font-black uppercase tracking-widest rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg shadow-lime-400/20 flex items-center gap-1.5 md:gap-2">
               <Heart size={10} fill="black" />
               DONATE
