@@ -7,6 +7,10 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import dns from 'dns';
+
+// Force Node.js to prioritize IPv4 over IPv6 to resolve Oracle Cloud outbound DNS failures
+dns.setDefaultResultOrder('ipv4first');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,7 +93,8 @@ app.post('/api/download-url', async (req, res) => {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         },
         body: JSON.stringify({
           url: url,
@@ -107,6 +112,10 @@ app.post('/api/download-url', async (req, res) => {
           successInstance = instance;
           break;
         }
+      } else {
+        const statusText = response.statusText;
+        const errText = await response.text();
+        console.warn(`[Downloader] Cobalt instance ${instance} returned status ${response.status} (${statusText}): ${errText}`);
       }
     } catch (err) {
       console.warn(`[Downloader] Cobalt instance ${instance} failed:`, err.message);
@@ -126,7 +135,11 @@ app.post('/api/download-url', async (req, res) => {
 
   try {
     console.log(`[Downloader] Streaming audio bypass download directly to: ${fullPath}...`);
-    const streamResponse = await fetch(downloadUrl);
+    const streamResponse = await fetch(downloadUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      }
+    });
     if (!streamResponse.ok) {
       throw new Error(`Failed to stream from Cobalt server: ${streamResponse.statusText}`);
     }
