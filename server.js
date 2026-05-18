@@ -176,9 +176,8 @@ app.post('/api/download-url', async (req, res) => {
             },
             body: JSON.stringify({
               url: url,
-              downloadMode: 'audio',
-              audioFormat: fileExt === 'flac' ? 'wav' : fileExt, // Cobalt uses wav/mp3
-              audioBitrate: bitrate ? bitrate.replace('k', '') : '320'
+              isAudioOnly: true,
+              aFormat: fileExt === 'flac' ? 'wav' : fileExt // Cobalt uses best/mp3/ogg/wav/opus
             })
           });
 
