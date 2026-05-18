@@ -5,7 +5,7 @@ import {
   Volume2, Waves, Zap, ShieldCheck, RefreshCw, Scissors, Split, 
   Layers, VolumeX, Maximize2, Trash2, ChevronRight, Activity, 
   Cpu, BarChart3, Dna, Plus, Disc, FileAudio, Guitar, Piano, Shield, Globe, Link, Check, Heart,
-  X, SkipBack, SkipForward, Repeat, Shuffle, Clock, List
+  X, SkipBack, SkipForward, Repeat, Shuffle, Clock, List, Search
 } from 'lucide-react';
 
 // Specialized WAV Encoder for client-side Trojan Horse processing
@@ -159,6 +159,33 @@ const App = () => {
   const [selectedLibraryTrack, setSelectedLibraryTrack] = useState(null);
   const [activeDownloadId, setActiveDownloadId] = useState(null);
   const [searchResults, setSearchResults] = useState(null);
+  const [captureMode, setCaptureMode] = useState('link'); // 'link' | 'search'
+  const [isLiveSearching, setIsLiveSearching] = useState(false);
+
+  // Debounced live search when user types in 'search' mode
+  useEffect(() => {
+    if (captureMode !== 'search' || !downloadUrl.trim() || downloadUrl.trim().length < 2) {
+      setSearchResults(null);
+      return;
+    }
+
+    setIsLiveSearching(true);
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(downloadUrl.trim())}`);
+        const data = await res.json();
+        if (data.success && data.results) {
+          setSearchResults(data.results);
+        }
+      } catch (err) {
+        console.error("Live search failed:", err);
+      } finally {
+        setIsLiveSearching(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(delayDebounce);
+  }, [downloadUrl, captureMode]);
 
   // --- Separator (Splitter) States ---
   const [file, setFile] = useState(null);
@@ -1217,84 +1244,107 @@ const App = () => {
         </div>
       )}
 
-      {view === 'downloader' && (
+{view === 'downloader' && (
         <main className="flex-1 flex flex-col items-center justify-center p-4 md:p-6 pt-32 animate-in slide-in-from-bottom-10">
           <div className="w-full max-w-5xl flex flex-col lg:flex-row gap-8">
              
              {/* Rip Matrix */}
              <div className="flex-1 glass-card p-6 md:p-12 relative overflow-hidden shadow-4xl">
-                <div className="relative z-10 text-center mb-10">
-                   <div className="w-16 h-16 rounded-[24px] bg-[#c8f564]/10 border border-[#c8f564]/20 flex items-center justify-center text-[#c8f564] mx-auto mb-6">
-                      <Globe size={28} />
-                   </div>
-                   <h2 className="text-2xl md:text-4xl font-black text-white uppercase tracking-tighter">Capture Hub</h2>
-                </div>
-                
-                <div className="relative z-10 space-y-8">
-                   <div className="relative group">
-                     <input 
-                       type="text" 
-                       placeholder="PASTE SOURCE LINK..." 
-                       className="w-full bg-black/40 border-2 border-white/5 rounded-[24px] pl-6 pr-32 py-6 text-xs font-black tracking-[0.2em] text-white focus:outline-none focus:border-[#c8f564] transition-all placeholder:text-gray-800 uppercase" 
-                       value={downloadUrl} 
-                       onChange={(e) => setDownloadUrl(e.target.value)} 
-                     />
-                     <div className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-700">
-                       <Link size={18} />
-                     </div>
-                   </div>
+                 <div className="relative z-10 text-center mb-6">
+                    <div className="w-16 h-16 rounded-[24px] bg-[#c8f564]/10 border border-[#c8f564]/20 flex items-center justify-center text-[#c8f564] mx-auto mb-4">
+                       <Globe size={28} />
+                    </div>
+                    <h2 className="text-2xl md:text-4xl font-black text-white uppercase tracking-tighter">Capture Hub</h2>
+                 </div>
 
-                   {searchResults ? (
-                      <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                         <div className="flex justify-between items-center mb-4">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c8f564]">Search Results</span>
-                            <button onClick={() => setSearchResults(null)} className="text-[9px] text-gray-500 hover:text-white uppercase font-black">Clear</button>
-                         </div>
-                         {searchResults.map((res, i) => (
-                            <div key={i} onClick={() => { setDownloadUrl(res.url); handleDirectDownload(res.url); }} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-transparent hover:border-[#c8f564]/30 transition-all">
-                               <img src={res.thumbnail} className="w-16 h-12 object-cover rounded-md opacity-80" alt="thumb" />
-                               <div className="flex-1 min-w-0">
-                                  <h4 className="text-[10px] font-bold text-white truncate">{res.title}</h4>
-                                  <p className="text-[8px] font-bold text-gray-500 mt-1 uppercase">{res.artist} • {res.duration}</p>
-                               </div>
-                               <div className="w-8 h-8 rounded-full bg-[#c8f564]/10 flex items-center justify-center">
-                                  <Download size={12} className="text-[#c8f564]" />
-                               </div>
-                            </div>
-                         ))}
+                 {/* Segmented Mode Selector */}
+                 <div className="flex justify-center gap-2 mb-8 bg-black/20 p-1.5 rounded-[20px] border border-white/5 max-w-[340px] mx-auto relative z-10">
+                    <button 
+                      onClick={() => { setCaptureMode('link'); setSearchResults(null); }} 
+                      className={`flex-1 py-3 px-4 rounded-xl text-[9px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 ${captureMode === 'link' ? 'bg-white text-black' : 'text-gray-500 hover:text-white'}`}
+                    >
+                      <Link size={12} />
+                      Paste Link
+                    </button>
+                    <button 
+                      onClick={() => { setCaptureMode('search'); setSearchResults(null); }} 
+                      className={`flex-1 py-3 px-4 rounded-xl text-[9px] font-black tracking-widest uppercase transition-all flex items-center justify-center gap-1.5 ${captureMode === 'search' ? 'bg-[#c8f564] text-black' : 'text-gray-500 hover:text-white'}`}
+                    >
+                      <Search size={12} />
+                      Search YouTube
+                    </button>
+                 </div>
+                 
+                 <div className="relative z-10 space-y-8">
+                    {/* Main Smart Input Bar */}
+                    <div className="relative group">
+                      <input 
+                        type="text" 
+                        placeholder={captureMode === 'link' ? "PASTE SOURCE LINK..." : "TYPE SONG NAME FOR LIVE RESULTS..."} 
+                        className="w-full bg-black/40 border-2 border-white/5 rounded-[24px] pl-6 pr-32 py-6 text-xs font-black tracking-[0.2em] text-white focus:outline-none focus:border-[#c8f564] transition-all placeholder:text-gray-800 uppercase" 
+                        value={downloadUrl} 
+                        onChange={(e) => setDownloadUrl(e.target.value)} 
+                      />
+                      <div className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-700 flex items-center gap-2">
+                        {isLiveSearching && <RefreshCw size={18} className="animate-spin text-[#c8f564]" />}
+                        {!isLiveSearching && captureMode === 'link' && <Link size={18} />}
+                        {!isLiveSearching && captureMode === 'search' && <Search size={18} />}
                       </div>
-                   ) : (
-                      <>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-3">
-                               <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Container</span>
-                               <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
-                                  {['wav', 'mp3', 'flac'].map(fmt => (
-                                    <button key={fmt} onClick={() => setDownloadFormat(fmt)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadFormat === fmt ? 'bg-white text-black' : 'text-gray-500 hover:text-white'}`}>{fmt}</button>
-                                  ))}
-                               </div>
-                            </div>
-                            <div className="space-y-3">
-                               <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Sample Grade</span>
-                               <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
-                                  {['320k', 'lossless'].map(bit => (
-                                    <button key={bit} onClick={() => setDownloadBitrate(bit)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadBitrate === bit ? 'bg-[#c8f564] text-black' : 'text-gray-500 hover:text-white'}`}>{bit}</button>
-                                  ))}
-                               </div>
-                            </div>
-                         </div>
+                    </div>
 
-                         <button 
-                           onClick={handleUniversalCapture} 
-                           disabled={!downloadUrl || isProcessing}
-                           className="w-full py-6 rounded-[24px] bg-white text-black font-black uppercase tracking-[0.5em] text-[9px] hover:bg-[#c8f564] transition-all active:scale-95 shadow-3xl disabled:opacity-20"
-                         >
-                           {downloadUrl && !downloadUrl.startsWith('http') ? 'Search YouTube Database' : 'Initiate Extraction'}
-                         </button>
-                      </>
-                   )}
-                </div>
-             </div>
+                    {/* Container & Quality Settings (Always Visible so user can select before clicking download) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <div className="space-y-3">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Container</span>
+                          <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
+                             {['wav', 'mp3', 'flac'].map(fmt => (
+                               <button key={fmt} onClick={() => setDownloadFormat(fmt)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadFormat === fmt ? 'bg-white text-black' : 'text-gray-500 hover:text-white'}`}>{fmt}</button>
+                             ))}
+                          </div>
+                       </div>
+                       <div className="space-y-3">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-gray-600 px-3">Sample Grade</span>
+                          <div className="flex gap-2 bg-black/20 p-1.5 rounded-[18px] border border-white/5">
+                             {['320k', 'lossless'].map(bit => (
+                               <button key={bit} onClick={() => setDownloadBitrate(bit)} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black transition-all uppercase ${downloadBitrate === bit ? 'bg-[#c8f564] text-black' : 'text-gray-500 hover:text-white'}`}>{bit}</button>
+                             ))}
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* Conditional Action: Live Search Results vs Direct Extraction Button */}
+                    {captureMode === 'search' ? (
+                       searchResults && searchResults.length > 0 && (
+                          <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar border-t border-white/5 pt-4">
+                             <div className="flex justify-between items-center mb-2">
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c8f564]">Live Search Results</span>
+                                <button onClick={() => { setDownloadUrl(''); setSearchResults(null); }} className="text-[9px] text-gray-500 hover:text-white uppercase font-black">Clear</button>
+                             </div>
+                             {searchResults.map((res, i) => (
+                                <div key={i} onClick={() => { setDownloadUrl(res.url); handleDirectDownload(res.url); }} className="flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-transparent hover:border-[#c8f564]/30 transition-all">
+                                   <img src={res.thumbnail} className="w-16 h-12 object-cover rounded-md opacity-80" alt="thumb" />
+                                   <div className="flex-1 min-w-0">
+                                      <h4 className="text-[10px] font-bold text-white truncate">{res.title}</h4>
+                                      <p className="text-[8px] font-bold text-gray-500 mt-1 uppercase">{res.artist} • {res.duration}</p>
+                                   </div>
+                                   <div className="w-8 h-8 rounded-full bg-[#c8f564]/10 flex items-center justify-center">
+                                      <Download size={12} className="text-[#c8f564]" />
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       )
+                    ) : (
+                       <button 
+                         onClick={handleUniversalCapture} 
+                         disabled={!downloadUrl || isProcessing}
+                         className="w-full py-6 rounded-[24px] bg-white text-black font-black uppercase tracking-[0.5em] text-[9px] hover:bg-[#c8f564] transition-all active:scale-95 shadow-3xl disabled:opacity-20"
+                       >
+                         Initiate Extraction
+                       </button>
+                    )}
+                 </div>
+              </div>
 
              {/* Signal History Sidebar */}
              <div className="w-full lg:w-80 glass-card p-6 md:p-8 flex flex-col max-h-[480px]">
