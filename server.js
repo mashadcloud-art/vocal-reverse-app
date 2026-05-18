@@ -60,105 +60,171 @@ const upload = multer({ storage: storage });
 const activeDownloads = {};
 
 app.post('/api/download-url', async (req, res) => {
-  const { url, format = 'wav', skipSeparation = false, bitrate = '320k', downloadId = Date.now().toString() } = req.body;
+  const { url, format = 'wav', skipSeparation = false, bitrate = '320k', downloadId = Date.now().toString(), cookies: clientCookies } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
   const uniqueId = Date.now();
-  const extension = format === 'mp3' ? 'mp3' : format === 'flac' ? 'flac' : 'wav';
+  let activeCookiesPath = null;
+  const tempCookiesFile = path.join(__dirname, `cookies_${downloadId}.txt`);
 
-  // 1. Dynamic YouTube / generic thumbnail constructor
-  let thumbnail = null;
-  const ytIdMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
-  if (ytIdMatch) {
-    thumbnail = `https://img.youtube.com/vi/${ytIdMatch[1]}/hqdefault.jpg`;
-  } else {
-    thumbnail = 'https://images.unsplash.com/photo-1614680376593-902f74fa0d41?q=80&w=300&auto=format&fit=crop';
-  }
-
-  // 2. High-performance, unblocked Cobalt API instances with bulletproof failover
-  const cobaltInstances = [
-    'https://api.cobalt.tools/api/json',
-    'https://cobalt-api.lunes.host/api/json',
-    'https://cobalt.api.ryuko.space/api/json'
-  ];
-
-  let downloadUrl = null;
-  let cleanTitle = 'downloaded_audio';
-  let successInstance = null;
-
-  for (const instance of cobaltInstances) {
-    console.log(`[Downloader] Trying Cobalt instance: ${instance}...`);
+  // Write client-provided cookies dynamically if sent, otherwise fallback to server's cookies.txt
+  if (clientCookies && clientCookies.trim()) {
     try {
-      const response = await fetch(instance, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-        },
-        body: JSON.stringify({
-          url: url,
-          isAudioOnly: true,
-          aFormat: extension,
-          audioBitrate: bitrate === '320k' ? '320' : '128'
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.status === 'stream' || data.status === 'redirect') {
-          downloadUrl = data.url;
-          cleanTitle = (data.picker || 'downloaded_audio').replace(/[^a-z0-9]/gi, '_').substring(0, 50);
-          successInstance = instance;
-          break;
-        }
-      } else {
-        const statusText = response.statusText;
-        const errText = await response.text();
-        console.warn(`[Downloader] Cobalt instance ${instance} returned status ${response.status} (${statusText}): ${errText}`);
-      }
-    } catch (err) {
-      console.warn(`[Downloader] Cobalt instance ${instance} failed:`, err.message);
+      fs.writeFileSync(tempCookiesFile, clientCookies.trim());
+      activeCookiesPath = tempCookiesFile;
+      console.log(`[Downloader] Created dynamic session cookies file: ${tempCookiesFile}`);
+    } catch (e) {
+      console.error("[Downloader] Failed to write dynamic cookies file:", e);
+    }
+  } else {
+    const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
+    if (fs.existsSync(COOKIES_PATH)) {
+      activeCookiesPath = COOKIES_PATH;
     }
   }
-
-  if (!downloadUrl) {
-    return res.status(500).json({ error: 'All free Cobalt bypass gateways are temporarily down or rate-limited. Please try again in a moment.' });
-  }
-
-  console.log(`[Downloader] Cobalt siphoning succeeded via: ${successInstance}!`);
-
-  // 3. Stream unblocked audio directly into local uploads/ folder to keep demucs stems & splitter pipeline intact
-  const safeTitle = `${cleanTitle}_${uniqueId}`;
-  const finalFileName = `${safeTitle}.${extension}`;
-  const fullPath = path.join(UPLOADS_DIR, finalFileName);
 
   try {
-    console.log(`[Downloader] Streaming audio bypass download directly to: ${fullPath}...`);
-    const streamResponse = await fetch(downloadUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    // 1. Get metadata using sequential failover strategies
+    const metadata = await new Promise(async (resolve) => {
+      const baseArgs = ['--js-runtimes', 'node'];
+      if (activeCookiesPath) baseArgs.push('--cookies', activeCookiesPath);
+      
+      const strategies = [
+        { name: 'Standard Session', extractorArgs: null, userAgent: null },
+        { 
+          name: 'iOS App Spoofing', 
+          extractorArgs: 'youtube:player_client=ios', 
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1' 
+        },
+        { 
+          name: 'Android App Spoofing', 
+          extractorArgs: 'youtube:player_client=android', 
+          userAgent: 'com.google.android.youtube/19.29.37 (Linux; U; Android 11; GMT) Mozilla/5.0 (Linux; Android 11; Premium Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Mobile Safari/537.36' 
+        }
+      ];
+
+      for (const strategy of strategies) {
+        try {
+          const args = [...baseArgs];
+          if (strategy.extractorArgs) args.push('--extractor-args', strategy.extractorArgs);
+          if (strategy.userAgent) args.push('--user-agent', strategy.userAgent);
+          args.push('--get-title', '--get-thumbnail', '--get-id', '--no-playlist', url);
+
+          const result = await new Promise((res, rej) => {
+            const proc = spawn('yt-dlp', args);
+            let output = '';
+            proc.stdout.on('data', d => output += d.toString());
+            proc.on('close', code => {
+              if (code === 0) res(output);
+              else rej(new Error(`Exit code ${code}`));
+            });
+            proc.on('error', rej);
+          });
+
+          const lines = result.trim().split('\n');
+          console.log(`[Metadata] Successfully fetched using ${strategy.name}`);
+          return resolve({
+            title: (lines[0]?.trim() || 'downloaded_audio').replace(/[^a-z0-9]/gi, '_').substring(0, 50),
+            thumbnail: lines[1]?.trim() || null
+          });
+        } catch (e) {
+          console.warn(`[Metadata] Strategy ${strategy.name} failed:`, e.message);
+        }
       }
+      resolve({ title: 'downloaded_audio', thumbnail: null });
     });
-    if (!streamResponse.ok) {
-      throw new Error(`Failed to stream from Cobalt server: ${streamResponse.statusText}`);
+
+    const safeTitle = `${metadata.title}_${uniqueId}`;
+    const extension = format === 'mp3' ? 'mp3' : format === 'flac' ? 'flac' : 'wav';
+    const outputPath = path.join(UPLOADS_DIR, `${safeTitle}.%(ext)s`);
+
+    // 2. Build base download args
+    const baseArgs = ['--js-runtimes', 'node'];
+    if (activeCookiesPath) baseArgs.push('--cookies', activeCookiesPath);
+    baseArgs.push('--no-playlist', '-f', 'ba', '-x', '--audio-format', extension);
+    if (extension === 'mp3') baseArgs.push('--audio-quality', bitrate);
+    else baseArgs.push('--audio-quality', '0');
+    baseArgs.push('-o', outputPath, url);
+
+    // 3. Sequential bulletproof download failover execution
+    const strategies = [
+      { name: 'Standard Session', extractorArgs: null, userAgent: null },
+      { 
+        name: 'iOS App Spoofing', 
+        extractorArgs: 'youtube:player_client=ios', 
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1' 
+      },
+      { 
+        name: 'Android App Spoofing', 
+        extractorArgs: 'youtube:player_client=android', 
+        userAgent: 'com.google.android.youtube/19.29.37 (Linux; U; Android 11; GMT) Mozilla/5.0 (Linux; Android 11; Premium Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Mobile Safari/537.36' 
+      },
+      { 
+        name: 'Mobile Web Spoofing', 
+        extractorArgs: 'youtube:player_client=mweb', 
+        userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36' 
+      }
+    ];
+
+    let downloadSuccess = false;
+    let lastError = null;
+
+    for (const strategy of strategies) {
+      console.log(`[Downloader] Attempting strategy: ${strategy.name}...`);
+      try {
+        const args = [...baseArgs];
+        if (strategy.extractorArgs) args.push('--extractor-args', strategy.extractorArgs);
+        if (strategy.userAgent) args.push('--user-agent', strategy.userAgent);
+
+        await new Promise((resolve, reject) => {
+          const proc = spawn('yt-dlp', args);
+          activeDownloads[downloadId] = proc;
+
+          proc.stderr.on('data', d => {
+            console.log(`[yt-dlp ${strategy.name}]:`, d.toString().trim());
+          });
+
+          proc.on('close', code => {
+            delete activeDownloads[downloadId];
+            if (code === 0) resolve();
+            else reject(new Error(`yt-dlp exited with code ${code}`));
+          });
+
+          proc.on('error', err => {
+            delete activeDownloads[downloadId];
+            reject(err);
+          });
+        });
+
+        console.log(`[Downloader] Strategy ${strategy.name} succeeded!`);
+        downloadSuccess = true;
+        break; // Stop trying other strategies!
+      } catch (err) {
+        console.warn(`[Downloader] Strategy ${strategy.name} failed:`, err.message);
+        lastError = err;
+      }
     }
 
-    const fileStream = fs.createWriteStream(fullPath);
-    await pipeline(Readable.fromWeb(streamResponse.body), fileStream);
+    if (!downloadSuccess) {
+      throw new Error(`All download strategies exhausted. Last error: ${lastError ? lastError.message : 'Unknown error'}`);
+    }
 
+    // 4. Find and return file
+    const files = fs.readdirSync(UPLOADS_DIR);
+    const downloadedFile = files.find(f => f.startsWith(safeTitle));
+    if (!downloadedFile) throw new Error('File not found after download');
+
+    const fullPath = path.join(UPLOADS_DIR, downloadedFile);
     const stats = fs.statSync(fullPath);
-    if (stats.size < 10000) throw new Error(`Stream resulted in empty/corrupted file (${stats.size} bytes)`);
-
-    console.log(`[Downloader] Stream finished successfully. File size: ${stats.size} bytes.`);
+    if (stats.size < 10000) throw new Error(`File too small (${stats.size} bytes)`);
 
     if (skipSeparation) {
       return res.json({
         success: true,
         downloadId,
-        directUrl: `/files/uploads/${finalFileName}`,
-        fileName: finalFileName,
-        thumbnail: thumbnail
+        directUrl: `/files/uploads/${downloadedFile}`,
+        fileName: downloadedFile,
+        thumbnail: metadata.thumbnail
       });
     }
 
@@ -166,18 +232,24 @@ app.post('/api/download-url', async (req, res) => {
       success: true,
       downloadId,
       filePath: fullPath,
-      fileName: finalFileName,
-      thumbnail: thumbnail,
-      previewUrl: `/files/uploads/${finalFileName}`
+      fileName: downloadedFile,
+      thumbnail: metadata.thumbnail,
+      previewUrl: `/files/uploads/${downloadedFile}`
     });
 
   } catch (err) {
-    console.error('Download stream writing failed:', err);
-    // Cleanup partial file if it exists
-    if (fs.existsSync(fullPath)) {
-      try { fs.unlinkSync(fullPath); } catch (e) {}
+    console.error('Download failed:', err);
+    res.status(500).json({ error: err.message || 'Failed to download audio.' });
+  } finally {
+    // Dynamic temporary cookies cleanup
+    if (clientCookies && fs.existsSync(tempCookiesFile)) {
+      try {
+        fs.unlinkSync(tempCookiesFile);
+        console.log(`[Downloader] Successfully cleaned up temp session cookies: ${tempCookiesFile}`);
+      } catch (e) {
+        console.error("[Downloader] Temp cookies cleanup error:", e);
+      }
     }
-    res.status(500).json({ error: err.message || 'Failed to download and stream audio.' });
   }
 });
 
