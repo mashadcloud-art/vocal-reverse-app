@@ -61,59 +61,130 @@ app.post('/api/download-url', async (req, res) => {
   const uniqueId = Date.now();
 
   try {
-    // 1. Get metadata first
-    const metadata = await new Promise((resolve, reject) => {
-      const args = ['--js-runtimes', 'node'];
-      if (fs.existsSync(COOKIES_PATH)) args.push('--cookies', COOKIES_PATH);
-      args.push('--get-title', '--get-thumbnail', '--get-id', '--no-playlist', url);
+    // 1. Get metadata using sequential failover strategies
+    const metadata = await new Promise(async (resolve) => {
+      const baseArgs = ['--js-runtimes', 'node'];
+      if (fs.existsSync(COOKIES_PATH)) baseArgs.push('--cookies', COOKIES_PATH);
+      
+      const strategies = [
+        { name: 'Standard Session', extractorArgs: null, userAgent: null },
+        { 
+          name: 'iOS App Spoofing', 
+          extractorArgs: 'youtube:player_client=ios', 
+          userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1' 
+        },
+        { 
+          name: 'Android App Spoofing', 
+          extractorArgs: 'youtube:player_client=android', 
+          userAgent: 'com.google.android.youtube/19.29.37 (Linux; U; Android 11; GMT) Mozilla/5.0 (Linux; Android 11; Premium Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Mobile Safari/537.36' 
+        }
+      ];
 
-      const proc = spawn('yt-dlp', args);
-      let output = '';
-      proc.stdout.on('data', d => output += d.toString());
-      proc.on('close', code => {
-        if (code !== 0) return reject(new Error('Metadata fetch failed'));
-        const lines = output.trim().split('\n');
-        resolve({
-          title: (lines[0]?.trim() || 'downloaded_audio').replace(/[^a-z0-9]/gi, '_').substring(0, 50),
-          thumbnail: lines[1]?.trim() || null
-        });
-      });
-    }).catch(() => ({ title: 'downloaded_audio', thumbnail: null }));
+      for (const strategy of strategies) {
+        try {
+          const args = [...baseArgs];
+          if (strategy.extractorArgs) args.push('--extractor-args', strategy.extractorArgs);
+          if (strategy.userAgent) args.push('--user-agent', strategy.userAgent);
+          args.push('--get-title', '--get-thumbnail', '--get-id', '--no-playlist', url);
+
+          const result = await new Promise((res, rej) => {
+            const proc = spawn('yt-dlp', args);
+            let output = '';
+            proc.stdout.on('data', d => output += d.toString());
+            proc.on('close', code => {
+              if (code === 0) res(output);
+              else rej(new Error(`Exit code ${code}`));
+            });
+            proc.on('error', rej);
+          });
+
+          const lines = result.trim().split('\n');
+          console.log(`[Metadata] Successfully fetched using ${strategy.name}`);
+          return resolve({
+            title: (lines[0]?.trim() || 'downloaded_audio').replace(/[^a-z0-9]/gi, '_').substring(0, 50),
+            thumbnail: lines[1]?.trim() || null
+          });
+        } catch (e) {
+          console.warn(`[Metadata] Strategy ${strategy.name} failed:`, e.message);
+        }
+      }
+      resolve({ title: 'downloaded_audio', thumbnail: null });
+    });
 
     const safeTitle = `${metadata.title}_${uniqueId}`;
     const extension = format === 'mp3' ? 'mp3' : format === 'flac' ? 'flac' : 'wav';
     const outputPath = path.join(UPLOADS_DIR, `${safeTitle}.%(ext)s`);
 
-    // 2. Build yt-dlp args
-    const args = ['--js-runtimes', 'node'];
-    if (fs.existsSync(COOKIES_PATH)) args.push('--cookies', COOKIES_PATH);
-    args.push('--no-playlist', '-f', 'ba', '-x', '--audio-format', extension);
-    if (extension === 'mp3') args.push('--audio-quality', bitrate);
-    else args.push('--audio-quality', '0');
-    args.push('-o', outputPath, url);
+    // 2. Build base download args
+    const baseArgs = ['--js-runtimes', 'node'];
+    if (fs.existsSync(COOKIES_PATH)) baseArgs.push('--cookies', COOKIES_PATH);
+    baseArgs.push('--no-playlist', '-f', 'ba', '-x', '--audio-format', extension);
+    if (extension === 'mp3') baseArgs.push('--audio-quality', bitrate);
+    else baseArgs.push('--audio-quality', '0');
+    baseArgs.push('-o', outputPath, url);
 
-    // 3. Spawn and track
-    await new Promise((resolve, reject) => {
-      const proc = spawn('yt-dlp', args);
-      activeDownloads[downloadId] = proc;
+    // 3. Sequential bulletproof download failover execution
+    const strategies = [
+      { name: 'Standard Session', extractorArgs: null, userAgent: null },
+      { 
+        name: 'iOS App Spoofing', 
+        extractorArgs: 'youtube:player_client=ios', 
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1' 
+      },
+      { 
+        name: 'Android App Spoofing', 
+        extractorArgs: 'youtube:player_client=android', 
+        userAgent: 'com.google.android.youtube/19.29.37 (Linux; U; Android 11; GMT) Mozilla/5.0 (Linux; Android 11; Premium Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.115 Mobile Safari/537.36' 
+      },
+      { 
+        name: 'Mobile Web Spoofing', 
+        extractorArgs: 'youtube:player_client=mweb', 
+        userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36' 
+      }
+    ];
 
-      let progressData = '';
-      proc.stderr.on('data', d => {
-        progressData += d.toString();
-        console.log('yt-dlp:', d.toString());
-      });
+    let downloadSuccess = false;
+    let lastError = null;
 
-      proc.on('close', code => {
-        delete activeDownloads[downloadId];
-        if (code === 0) resolve();
-        else reject(new Error(`yt-dlp exited with code ${code}`));
-      });
+    for (const strategy of strategies) {
+      console.log(`[Downloader] Attempting strategy: ${strategy.name}...`);
+      try {
+        const args = [...baseArgs];
+        if (strategy.extractorArgs) args.push('--extractor-args', strategy.extractorArgs);
+        if (strategy.userAgent) args.push('--user-agent', strategy.userAgent);
 
-      proc.on('error', err => {
-        delete activeDownloads[downloadId];
-        reject(err);
-      });
-    });
+        await new Promise((resolve, reject) => {
+          const proc = spawn('yt-dlp', args);
+          activeDownloads[downloadId] = proc;
+
+          proc.stderr.on('data', d => {
+            console.log(`[yt-dlp ${strategy.name}]:`, d.toString().trim());
+          });
+
+          proc.on('close', code => {
+            delete activeDownloads[downloadId];
+            if (code === 0) resolve();
+            else reject(new Error(`yt-dlp exited with code ${code}`));
+          });
+
+          proc.on('error', err => {
+            delete activeDownloads[downloadId];
+            reject(err);
+          });
+        });
+
+        console.log(`[Downloader] Strategy ${strategy.name} succeeded!`);
+        downloadSuccess = true;
+        break; // Stop trying other strategies!
+      } catch (err) {
+        console.warn(`[Downloader] Strategy ${strategy.name} failed:`, err.message);
+        lastError = err;
+      }
+    }
+
+    if (!downloadSuccess) {
+      throw new Error(`All download strategies exhausted. Last error: ${lastError ? lastError.message : 'Unknown error'}`);
+    }
 
     // 4. Find and return file
     const files = fs.readdirSync(UPLOADS_DIR);
