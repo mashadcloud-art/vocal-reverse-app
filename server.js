@@ -163,19 +163,39 @@ app.post('/api/download-url', async (req, res) => {
 
         if (videoId) {
           console.log(`[RapidAPI Bypass] Attempting extraction for videoId: ${videoId}`);
-          const rapidResponse = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
-            method: 'GET',
-            headers: {
-              'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com',
-              'x-rapidapi-key': '219cb6dd57mshade28004b8f12cfp12a153jsnc7f53ea593b0'
+          
+          let rapidData = null;
+          let attempts = 0;
+          const maxAttempts = 20; // 60 seconds total
+
+          while (attempts < maxAttempts) {
+            const rapidResponse = await fetch(`https://youtube-mp36.p.rapidapi.com/dl?id=${videoId}`, {
+              method: 'GET',
+              headers: {
+                'x-rapidapi-host': 'youtube-mp36.p.rapidapi.com',
+                'x-rapidapi-key': '219cb6dd57mshade28004b8f12cfp12a153jsnc7f53ea593b0'
+              }
+            });
+
+            if (!rapidResponse.ok) throw new Error(`HTTP Status ${rapidResponse.status}`);
+            rapidData = await rapidResponse.json();
+
+            if (rapidData.status === 'ok' && rapidData.link) {
+              console.log(`[RapidAPI Bypass] Stream ready! Progress: ${rapidData.progress}%`);
+              break; // Ready to download!
             }
-          });
 
-          if (!rapidResponse.ok) throw new Error(`HTTP Status ${rapidResponse.status}`);
-          const rapidData = await rapidResponse.json();
+            if (rapidData.msg && rapidData.msg.toLowerCase().includes('fail')) {
+              throw new Error(rapidData.msg);
+            }
 
-          if (rapidData.status !== 'ok' || !rapidData.link) {
-            throw new Error(rapidData.msg || 'No download URL returned from RapidAPI');
+            console.log(`[RapidAPI Bypass] Processing... Progress: ${rapidData.progress || 0}% (Attempt ${attempts + 1}/${maxAttempts})`);
+            await new Promise(resolve => setTimeout(resolve, 3000)); // wait 3 seconds before polling
+            attempts++;
+          }
+
+          if (!rapidData || rapidData.status !== 'ok' || !rapidData.link) {
+            throw new Error(rapidData?.msg || 'RapidAPI timeout: File never became ready.');
           }
 
           rapidApiTitle = (rapidData.title || 'downloaded_audio')
