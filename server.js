@@ -217,8 +217,63 @@ app.post('/api/download-url', async (req, res) => {
           directUrl: `/files/uploads/${cobaltFile}`
         };
       }
+      // 2. Secondary Zero-Cookie Bypass (Invidious API Network)
+      let invidiousSuccess = false;
+      let invidiousFile = null;
+      let invOutputPath = null;
 
-      console.log(`[Downloader] Cobalt bypass failed. Falling back to local yt-dlp...`);
+      const videoIdMatch = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+      const videoId = videoIdMatch ? videoIdMatch[1] : null;
+
+      if (videoId) {
+        const invidiousInstances = [
+          'https://invidious.jing.rocks',
+          'https://invidious.nerdvpn.de',
+          'https://iv.melmac.space',
+          'https://invidious.lunar.icu'
+        ];
+
+        for (const instance of invidiousInstances) {
+          try {
+            console.log(`[Invidious Bypass] Attempting extraction via: ${instance}`);
+            const invRes = await fetch(`${instance}/api/v1/videos/${videoId}`);
+            if (!invRes.ok) throw new Error(`HTTP Status ${invRes.status}`);
+            const invData = await invRes.json();
+            
+            const audioStream = (invData.adaptiveFormats || []).find(f => f.type && f.type.includes('audio'));
+            if (!audioStream || !audioStream.url) throw new Error('No audio stream found');
+
+            const invExt = 'webm';
+            invOutputPath = path.join(UPLOADS_DIR, `${cleanTitle}_${uniqueId}_inv.${invExt}`);
+
+            console.log(`[Invidious Bypass] Stream URL acquired! Downloading...`);
+            const fileStreamResponse = await fetch(audioStream.url);
+            if (!fileStreamResponse.ok) throw new Error(`HTTP ${fileStreamResponse.status}`);
+
+            const arrayBuf = await fileStreamResponse.arrayBuffer();
+            fs.writeFileSync(invOutputPath, Buffer.from(arrayBuf));
+            console.log(`[Invidious Bypass] Direct stream successfully saved: ${invOutputPath}`);
+
+            invidiousFile = `${cleanTitle}_${uniqueId}_inv.${invExt}`;
+            invidiousSuccess = true;
+            break;
+          } catch (e) {
+            console.warn(`[Invidious Bypass] Instance ${instance} failed:`, e.message);
+          }
+        }
+      }
+
+      if (invidiousSuccess) {
+        console.log(`[Downloader] Invidious bypass strategy succeeded! File: ${invidiousFile}`);
+        return {
+          filePath: invOutputPath,
+          fileName: invidiousFile,
+          thumbnail: null,
+          directUrl: `/files/uploads/${invidiousFile}`
+        };
+      }
+
+      console.log(`[Downloader] Zero-cookie bypasses failed. Falling back to local yt-dlp...`);
 
       // 2. Fallback Strategy: Get metadata using sequential failover strategies
       const metadata = await new Promise(async (resolve) => {
